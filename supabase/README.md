@@ -76,7 +76,20 @@ supabase/add_teams_todo_assignments_20260606.sql
 - 指名先MyToDoは本人の `user_id` に紐づくため、Owner/Admin/Managerでも通常画面では中身を閲覧できません
 - 停止中/退職ユーザーはアプリ側ログイン時にもブロックします
 
-## 7. ローカル確認
+## 7. プロフィール画像
+
+プロフィール画像をファイルアップロードで保存するStorage Bucketを追加します。
+
+```text
+supabase/add_profile_avatar_storage_20260606.sql
+```
+
+- 画面ではURL入力ではなく画像ファイルを選択します
+- ファイルはSupabase Storageの `profile-avatars` bucketに保存します
+- `public.profiles.avatar_url` には表示用URLのみ保存します
+- 対応形式は JPG / PNG / WEBP / GIF、上限は5MBです
+
+## 8. ローカル確認
 
 開発サーバー:
 
@@ -90,7 +103,7 @@ npm run dev
 npm run start -- --hostname 0.0.0.0 --port 3000
 ```
 
-## 8. TeamOS内からユーザー招待
+## 9. TeamOS内からユーザー招待
 
 `.env.local` に `SUPABASE_SERVICE_ROLE_KEY` を設定して開発サーバーを再起動します。
 

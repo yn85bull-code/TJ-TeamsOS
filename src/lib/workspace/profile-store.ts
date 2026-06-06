@@ -46,7 +46,6 @@ export type TeamProfileUpdatePayload = {
   position?: string;
   isActive?: boolean;
   employmentStatus?: string;
-  avatarUrl?: string;
 };
 
 export const OPERATIONAL_ROLE_OPTIONS: Array<{ value: AppRole; label: string; description: string }> = [
@@ -126,8 +125,61 @@ export async function updateProfileEmploymentStatusInSupabase(
   return updateTeamProfileInSupabase({ profileId, ...payload });
 }
 
-export async function updateProfileAvatarInSupabase(profileId: string, avatarUrl: string) {
-  return updateTeamProfileInSupabase({ profileId, avatarUrl });
+export async function uploadProfileAvatarFileInSupabase(profileId: string, file: File) {
+  if (!canUseSupabaseBrowserClient() || !isSupabaseUuid(profileId)) {
+    return { source: "demo" as const };
+  }
+
+  const supabase = createSupabaseBrowserClient();
+  const { data } = await supabase.auth.getSession();
+  const accessToken = data.session?.access_token;
+
+  if (!accessToken) {
+    throw new Error("本ログイン後にプロフィール画像を登録してください。");
+  }
+
+  const formData = new FormData();
+  formData.append("profileId", profileId);
+  formData.append("avatar", file);
+
+  const response = await fetch("/api/profile/avatar", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: formData,
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(typeof result.error === "string" ? result.error : "プロフィール画像の登録に失敗しました。");
+  }
+
+  const uploadedProfile = result.profile as Partial<TeamProfileEntry> | undefined;
+  if (!uploadedProfile?.id) {
+    return { source: "supabase" as const, profile: undefined };
+  }
+
+  const role = normalizeAppRole((uploadedProfile.role ?? "member") as AppRole);
+  return {
+    source: "supabase" as const,
+    profile: {
+      id: uploadedProfile.id,
+      displayName: uploadedProfile.displayName ?? "未設定ユーザー",
+      email: uploadedProfile.email ?? "",
+      departmentId: uploadedProfile.departmentId,
+      departmentName: uploadedProfile.departmentName ?? "未設定",
+      organization: uploadedProfile.organization ?? uploadedProfile.departmentName ?? "未設定",
+      position: uploadedProfile.position ?? "未設定",
+      role,
+      roleLabel: getRoleLabel(role),
+      isActive: uploadedProfile.isActive ?? true,
+      employmentStatus: uploadedProfile.employmentStatus ?? "在籍中",
+      joinedAt: uploadedProfile.joinedAt,
+      avatarUrl: uploadedProfile.avatarUrl,
+      source: "supabase" as const,
+    } satisfies TeamProfileEntry,
+  };
 }
 
 export async function updateTeamProfileInSupabase(payload: TeamProfileUpdatePayload) {

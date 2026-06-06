@@ -36,7 +36,7 @@ import { createIssueRecord, createTaskRecord, loadCreatedRecordsFromSupabase, re
 import { DEPARTMENTS_STORAGE_KEY, DEFAULT_DEPARTMENTS, normalizeDepartmentList } from "@/lib/workspace/department-store";
 import { createAssignedMyTodoRecord, createMyTodoRecord, formatMyTodoDateTime, loadMyTodos, softDeleteMyTodoRecord, updateMyTodoRecord, type MyTodoEntry } from "@/lib/workspace/my-todo-store";
 import { createNotificationRecord, loadNotificationsFromSupabase, markNotificationReadRecord, markNotificationsReadRecord, type AppNotificationEntry } from "@/lib/workspace/notification-store";
-import { updateProfileAvatarInSupabase } from "@/lib/workspace/profile-store";
+import { uploadProfileAvatarFileInSupabase } from "@/lib/workspace/profile-store";
 import { createTeamsTodoRecord, loadTeamsTodos, softDeleteTeamsTodoRecord, updateTeamsTodoRecord, type TeamsTodoEntry } from "@/lib/workspace/teams-todo-store";
 import { AppRole } from "@/types/database";
 import { CheckCircle2, X } from "lucide-react";
@@ -571,17 +571,21 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
   const updateCurrentUser = (patch: Partial<Pick<AuthUser, "avatarUrl">>) => {
     setCurrentUser((user) => user ? { ...user, ...patch } : user);
   };
-  const saveCurrentUserAvatar = async (avatarUrl: string) => {
+  const saveCurrentUserAvatarFile = async (file: File) => {
     if (!currentUser) return;
-    setCurrentUser((user) => user ? { ...user, avatarUrl } : user);
-    if (currentUser.authSource !== "supabase") return;
+    const previousAvatarUrl = currentUser.avatarUrl;
+    if (currentUser.authSource !== "supabase") {
+      const avatarUrl = await readFileAsDataUrl(file);
+      setCurrentUser((user) => user ? { ...user, avatarUrl } : user);
+      return;
+    }
     try {
-      const result = await updateProfileAvatarInSupabase(currentUser.id, avatarUrl);
+      const result = await uploadProfileAvatarFileInSupabase(currentUser.id, file);
       if (result.profile) {
         setCurrentUser((user) => user ? { ...user, avatarUrl: result.profile?.avatarUrl ?? "" } : user);
       }
     } catch (error) {
-      setCurrentUser((user) => user ? { ...user, avatarUrl: currentUser.avatarUrl } : user);
+      setCurrentUser((user) => user ? { ...user, avatarUrl: previousAvatarUrl } : user);
       throw error;
     }
   };
@@ -686,7 +690,7 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
           onSelect={setActiveKey}
           onCreate={openCreateDrawer}
           onLogout={logout}
-          onUpdateAvatar={saveCurrentUserAvatar}
+          onUpdateAvatarFile={saveCurrentUserAvatarFile}
           notifications={visibleHeaderNotifications}
           onMarkNotificationRead={markNotificationRead}
           onMarkAllNotificationsRead={markAllNotificationsRead}
@@ -907,6 +911,15 @@ function loadStoredList<T>(key: string): T[] {
 function saveStoredList<T>(key: string, value: T[]) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(new Error("ファイルの読み込みに失敗しました。"));
+    reader.readAsDataURL(file);
+  });
 }
 
 function shouldShowNotification(notification: AppNotificationEntry, currentUser: AuthUser | null) {

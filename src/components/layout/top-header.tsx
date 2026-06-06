@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, CheckCircle2, ChevronDown, CircleHelp, LogOut, Plus, Search, Settings, ShieldCheck, UserRound } from "lucide-react";
+import { Bell, CheckCircle2, ChevronDown, CircleHelp, LogOut, Plus, Search, Settings, ShieldCheck, Upload, UserRound } from "lucide-react";
 import { navItems } from "@/lib/dashboard-demo-data";
 import { AuthUser } from "@/lib/auth-demo-data";
 import { canAccessNavItem } from "@/lib/domain/permissions";
@@ -67,7 +67,7 @@ export function TopHeader({
   onSelect,
   onCreate,
   onLogout,
-  onUpdateAvatar,
+  onUpdateAvatarFile,
   notifications,
   onMarkNotificationRead,
   onMarkAllNotificationsRead,
@@ -80,7 +80,7 @@ export function TopHeader({
   onSelect: (key: string) => void;
   onCreate: () => void;
   onLogout: () => void;
-  onUpdateAvatar?: (avatarUrl: string) => Promise<void> | void;
+  onUpdateAvatarFile?: (file: File) => Promise<void> | void;
   notifications?: AppNotificationEntry[];
   onMarkNotificationRead?: (notification: AppNotificationEntry) => void;
   onMarkAllNotificationsRead?: (notifications: AppNotificationEntry[]) => void;
@@ -89,7 +89,8 @@ export function TopHeader({
   const [searchFocused, setSearchFocused] = useState(false);
   const [openPanel, setOpenPanel] = useState<"notifications" | "help" | "account" | null>(null);
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
-  const [avatarDraft, setAvatarDraft] = useState(user.avatarUrl ?? "");
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState(user.avatarUrl ?? "");
   const [avatarMessage, setAvatarMessage] = useState("");
   const [avatarSaving, setAvatarSaving] = useState(false);
   const notificationItems = (notifications ?? demoHeaderNotifications).filter((item) => canAccessNavItem(appRole, item.target));
@@ -104,7 +105,8 @@ export function TopHeader({
 
   const selectPanel = (panel: "notifications" | "help" | "account") => {
     if (panel === "account" && openPanel !== "account") {
-      setAvatarDraft(user.avatarUrl ?? "");
+      setAvatarFile(null);
+      setAvatarPreview(user.avatarUrl ?? "");
       setAvatarMessage("");
     }
     setOpenPanel((current) => (current === panel ? null : panel));
@@ -128,18 +130,30 @@ export function TopHeader({
     onMarkAllNotificationsRead?.(notificationItems);
   };
 
+  const selectAvatarFile = (file?: File) => {
+    if (!file) return;
+    if (!isAllowedProfileImageFile(file)) {
+      setAvatarFile(null);
+      setAvatarMessage("画像は JPG / PNG / WEBP / GIF、5MB以下で選択してください。");
+      return;
+    }
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+    setAvatarMessage(`${file.name} を選択しました。`);
+  };
+
   const saveAvatar = async () => {
-    const nextAvatarUrl = avatarDraft.trim();
-    if (nextAvatarUrl && !isValidProfileImageUrl(nextAvatarUrl)) {
-      setAvatarMessage("画像URLは http(s) または data:image 形式で入力してください。");
+    if (!avatarFile) {
+      setAvatarMessage("プロフィール画像ファイルを選択してください。");
       return;
     }
 
     setAvatarSaving(true);
-    setAvatarMessage("プロフィール画像を保存しています。");
+    setAvatarMessage("プロフィール画像をアップロードしています。");
     try {
-      await onUpdateAvatar?.(nextAvatarUrl);
-      setAvatarMessage(nextAvatarUrl ? "プロフィール画像を保存しました。" : "プロフィール画像を削除しました。");
+      await onUpdateAvatarFile?.(avatarFile);
+      setAvatarFile(null);
+      setAvatarMessage("プロフィール画像を保存しました。");
     } catch (error) {
       const message = error instanceof Error ? error.message : "プロフィール画像の保存に失敗しました。";
       setAvatarMessage(message);
@@ -296,22 +310,32 @@ export function TopHeader({
                   <AccountRow icon={<CheckCircle2 size={16} />} label="ログイン" value={user.authSource === "supabase" ? "Supabase Auth" : "デモ"} />
                 </div>
                 <div className="mt-4 rounded-lg bg-slate-50 p-3">
-                  <label className="grid gap-2 text-xs font-bold text-slate-600">
-                    プロフィール画像URL
+                  <div className="flex items-center gap-3">
+                    <AvatarCircle user={{ ...user, avatarUrl: avatarPreview || user.avatarUrl }} sizeClassName="size-12" />
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-slate-600">プロフィール画像</p>
+                      <p className="mt-1 truncate text-[11px] font-semibold text-slate-500">{avatarFile?.name ?? "未選択"}</p>
+                    </div>
+                  </div>
+                  <label className="mt-3 grid cursor-pointer gap-2 text-xs font-bold text-slate-600">
                     <input
-                      className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none focus:border-[#D6001C]"
-                      placeholder="https://..."
-                      value={avatarDraft}
-                      onChange={(event) => setAvatarDraft(event.currentTarget.value)}
+                      className="sr-only"
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      onChange={(event) => selectAvatarFile(event.currentTarget.files?.[0])}
                     />
+                    <span className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 hover:border-[#D6001C]">
+                      <Upload size={14} />
+                      ファイルを選択
+                    </span>
                   </label>
                   <button
                     className="mt-2 h-9 w-full rounded-lg bg-slate-900 px-3 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300"
                     type="button"
-                    disabled={avatarSaving || avatarDraft.trim() === (user.avatarUrl ?? "")}
+                    disabled={avatarSaving || !avatarFile}
                     onClick={() => void saveAvatar()}
                   >
-                    {avatarSaving ? "保存中" : "画像を保存"}
+                    {avatarSaving ? "アップロード中" : "画像を保存"}
                   </button>
                   {avatarMessage ? <p className="mt-2 text-xs font-bold text-slate-500">{avatarMessage}</p> : null}
                 </div>
@@ -371,14 +395,8 @@ function isNotificationRead(notification: AppNotificationEntry, readNotification
   return Boolean(notification.readAt) || readNotificationIds.includes(notification.id);
 }
 
-function isValidProfileImageUrl(value: string) {
-  if (value.startsWith("data:image/")) return true;
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" || url.protocol === "http:";
-  } catch {
-    return false;
-  }
+function isAllowedProfileImageFile(file: File) {
+  return ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type) && file.size <= 5 * 1024 * 1024;
 }
 
 function HelpItem({ title, body }: { title: string; body: string }) {

@@ -8,7 +8,7 @@ import { loadLocalTaskRecords, saveLocalTaskRecords, saveTaskRecord } from "@/li
 import { formatMyTodoDateTime, type MyTodoEntry, type MyTodoPriority, type MyTodoStatus } from "@/lib/workspace/my-todo-store";
 import { type TeamsTodoEntry } from "@/lib/workspace/teams-todo-store";
 import { DEFAULT_DEPARTMENTS, normalizeDepartmentList } from "@/lib/workspace/department-store";
-import { OPERATIONAL_ROLE_OPTIONS, TeamProfileEntry, demoUsersToProfiles, getRoleLabel, inviteTeamUser, loadTeamProfilesFromSupabase, updateProfileAvatarInSupabase, updateProfileDepartmentAndPositionInSupabase, updateProfileEmploymentStatusInSupabase, updateProfileRoleInSupabase } from "@/lib/workspace/profile-store";
+import { OPERATIONAL_ROLE_OPTIONS, TeamProfileEntry, demoUsersToProfiles, getRoleLabel, inviteTeamUser, loadTeamProfilesFromSupabase, uploadProfileAvatarFileInSupabase, updateProfileDepartmentAndPositionInSupabase, updateProfileEmploymentStatusInSupabase, updateProfileRoleInSupabase } from "@/lib/workspace/profile-store";
 import { AppRole } from "@/types/database";
 import { BookOpen, Bot, Building2, CalendarDays, CheckCircle2, ClipboardList, Clock, Database, FileText, Inbox, ListChecks, LockKeyhole, Pencil, Plus, Save, Search, Send, ShieldCheck, Trash2, Upload, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -3345,6 +3345,7 @@ export function SettingsPage({
   const [profiles, setProfiles] = useState<TeamProfileEntry[]>(demoUsersToProfiles());
   const [profileDrafts, setProfileDrafts] = useState<Record<string, { departmentName: string; position: string }>>({});
   const [profileAvatarDrafts, setProfileAvatarDrafts] = useState<Record<string, string>>({});
+  const [profileAvatarFiles, setProfileAvatarFiles] = useState<Record<string, File | undefined>>({});
   const [profileStatus, setProfileStatus] = useState<"loading" | "ready" | "error">("loading");
   const [profileMessage, setProfileMessage] = useState("");
   const [savingProfileId, setSavingProfileId] = useState<string | null>(null);
@@ -3428,6 +3429,16 @@ export function SettingsPage({
 
         return nextDrafts;
       });
+      setProfileAvatarFiles((files) => {
+        const nextFiles = { ...files };
+        const profileIds = new Set(profiles.map((profile) => profile.id));
+        Object.keys(nextFiles).forEach((profileId) => {
+          if (!profileIds.has(profileId)) {
+            delete nextFiles[profileId];
+          }
+        });
+        return nextFiles;
+      });
     });
   }, [currentUserAvatarUrl, currentUserId, profiles]);
 
@@ -3455,6 +3466,20 @@ export function SettingsPage({
     }));
   };
 
+  const selectProfileAvatarFile = (profile: TeamProfileEntry, file?: File) => {
+    if (!file) return;
+    if (!isAllowedProfileImageFile(file)) {
+      setProfileMessage("プロフィール画像は JPG / PNG / WEBP / GIF、5MB以下で選択してください。");
+      return;
+    }
+    setProfileAvatarFiles((files) => ({
+      ...files,
+      [profile.id]: file,
+    }));
+    updateProfileAvatarDraft(profile.id, URL.createObjectURL(file));
+    setProfileMessage(`${profile.displayName}さんの画像ファイルを選択しました。保存を押すと登録されます。`);
+  };
+
   const applyUpdatedProfile = (updatedProfile: TeamProfileEntry) => {
     setProfiles((items) =>
       items.map((item) =>
@@ -3478,6 +3503,11 @@ export function SettingsPage({
       ...drafts,
       [updatedProfile.id]: updatedProfile.avatarUrl ?? "",
     }));
+    setProfileAvatarFiles((files) => {
+      const nextFiles = { ...files };
+      delete nextFiles[updatedProfile.id];
+      return nextFiles;
+    });
   };
 
   const inviteUser = async () => {
@@ -3651,29 +3681,35 @@ export function SettingsPage({
 
   const updateProfileAvatar = async (profile: TeamProfileEntry) => {
     if (!canChangeUserRoles && profile.id !== currentUserId) return;
-    const avatarUrl = getProfileAvatarDraft(profile).trim();
-
-    if (avatarUrl && !isValidProfileImageUrl(avatarUrl)) {
-      setProfileMessage("プロフィール画像URLは http(s) または data:image 形式で入力してください。");
+    const avatarFile = profileAvatarFiles[profile.id];
+    if (!avatarFile) {
+      setProfileMessage("プロフィール画像ファイルを選択してください。");
       return;
     }
 
     const previousProfiles = profiles;
     setSavingProfileId(profile.id);
-    setProfileMessage(`${profile.displayName}さんのプロフィール画像を更新しています。`);
-    setProfiles((items) => items.map((item) => item.id === profile.id ? { ...item, avatarUrl } : item));
-    if (profile.id === currentUserId) {
-      onUpdateCurrentUser?.({ avatarUrl });
-    }
+    setProfileMessage(`${profile.displayName}さんのプロフィール画像をアップロードしています。`);
+
     if (currentAuthSource !== "supabase" || profile.source === "demo") {
+      const avatarUrl = await readFileAsDataUrl(avatarFile);
+      setProfiles((items) => items.map((item) => item.id === profile.id ? { ...item, avatarUrl } : item));
       updateProfileAvatarDraft(profile.id, avatarUrl);
+      setProfileAvatarFiles((files) => {
+        const nextFiles = { ...files };
+        delete nextFiles[profile.id];
+        return nextFiles;
+      });
+      if (profile.id === currentUserId) {
+        onUpdateCurrentUser?.({ avatarUrl });
+      }
       setProfileMessage(`${profile.displayName}さんのプロフィール画像をデモ表示上で更新しました。Supabase反映には本ログインが必要です。`);
       setSavingProfileId(null);
       return;
     }
 
     try {
-      const result = await updateProfileAvatarInSupabase(profile.id, avatarUrl);
+      const result = await uploadProfileAvatarFileInSupabase(profile.id, avatarFile);
       if (result.profile) {
         applyUpdatedProfile(result.profile);
         if (profile.id === currentUserId) {
@@ -3687,6 +3723,11 @@ export function SettingsPage({
       console.warn("Profile avatar update failed.", error);
       setProfiles(previousProfiles);
       updateProfileAvatarDraft(profile.id, profile.avatarUrl ?? "");
+      setProfileAvatarFiles((files) => {
+        const nextFiles = { ...files };
+        delete nextFiles[profile.id];
+        return nextFiles;
+      });
       if (profile.id === currentUserId) {
         onUpdateCurrentUser?.({ avatarUrl: profile.avatarUrl ?? "" });
       }
@@ -3916,7 +3957,7 @@ export function SettingsPage({
                       const normalizedDraftPosition = draft.position.trim() || "未設定";
                       const profileDetailsChanged = draft.departmentName !== profile.departmentName || normalizedDraftPosition !== profile.position;
                       const avatarDraft = getProfileAvatarDraft(profile);
-                      const avatarChanged = avatarDraft.trim() !== (profile.avatarUrl ?? "");
+                      const avatarFile = profileAvatarFiles[profile.id];
                       return (
                         <tr key={profile.id} className="border-b border-slate-100 hover:bg-slate-50/70">
                           <td className="p-3">
@@ -3928,22 +3969,21 @@ export function SettingsPage({
                               </div>
                             </div>
                             <div className="mt-3 grid min-w-[280px] gap-2 lg:grid-cols-[1fr_72px]">
-                              <input
-                                className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
-                                placeholder="プロフィール画像URL"
-                                value={avatarDraft}
-                                disabled={!canEditProfileAvatar || isSaving}
-                                onChange={(event) => updateProfileAvatarDraft(profile.id, event.target.value)}
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter" && avatarChanged) {
-                                    void updateProfileAvatar(profile);
-                                  }
-                                }}
-                              />
+                              <label className={`inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 ${canEditProfileAvatar && !isSaving ? "cursor-pointer hover:border-[#D6001C]" : "cursor-not-allowed opacity-60"}`}>
+                                <Upload size={14} />
+                                <span className="max-w-[150px] truncate">{avatarFile?.name ?? "画像を選択"}</span>
+                                <input
+                                  className="sr-only"
+                                  type="file"
+                                  accept="image/jpeg,image/png,image/webp,image/gif"
+                                  disabled={!canEditProfileAvatar || isSaving}
+                                  onChange={(event) => selectProfileAvatarFile(profile, event.currentTarget.files?.[0])}
+                                />
+                              </label>
                               <button
                                 className="h-10 rounded-lg bg-slate-900 px-3 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300"
                                 type="button"
-                                disabled={!canEditProfileAvatar || isSaving || !avatarChanged}
+                                disabled={!canEditProfileAvatar || isSaving || !avatarFile}
                                 onClick={() => void updateProfileAvatar(profile)}
                               >
                                 保存
@@ -4116,14 +4156,17 @@ export function SettingsPage({
   );
 }
 
-function isValidProfileImageUrl(value: string) {
-  if (value.startsWith("data:image/")) return true;
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" || url.protocol === "http:";
-  } catch {
-    return false;
-  }
+function isAllowedProfileImageFile(file: File) {
+  return ["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type) && file.size <= 5 * 1024 * 1024;
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(new Error("ファイルの読み込みに失敗しました。"));
+    reader.readAsDataURL(file);
+  });
 }
 
 type MyTodoFormState = {
