@@ -71,6 +71,7 @@ export async function createIssueRecord(issue: CreatedIssueEntry, profileId?: st
     department_name: issue.department,
     as_is: issue.asIs,
     to_be: issue.toBe ?? null,
+    assignee_id: resolveSelfProfileId([issue.owner], issue.createdByName, profileId),
     assignee_name: issue.owner,
     created_by: profileId,
     due_date: parseDisplayDate(issue.due),
@@ -110,6 +111,7 @@ export async function updateIssueRecord(issue: CreatedIssueEntry) {
     department_name: issue.department,
     as_is: issue.asIs,
     to_be: issue.toBe ?? null,
+    assignee_id: resolveSelfProfileId([issue.owner], issue.createdByName, issue.createdById),
     assignee_name: issue.owner,
     due_date: parseDisplayDate(issue.due),
     status: mapIssueStatus(issue.status),
@@ -177,6 +179,7 @@ export async function createTaskRecord(task: CreatedTaskEntry, profileId?: strin
     issue_id: isSupabaseUuid(task.sourceIssueSupabaseId) ? task.sourceIssueSupabaseId : null,
     title: task.title,
     project_name: task.projectName,
+    assignee_id: resolveSelfProfileId([task.assigneeName, task.assigneePerson], task.createdByName, profileId),
     assignee_name: task.assigneeName,
     created_by: profileId,
     due_date: parseDisplayDate(task.dueDate),
@@ -219,6 +222,7 @@ export async function updateTaskRecord(task: CreatedTaskEntry) {
   const payload: TaskUpdate = {
     title: task.title,
     project_name: task.projectName,
+    assignee_id: resolveSelfProfileId([task.assigneeName, task.assigneePerson], task.createdByName, task.createdById),
     assignee_name: task.assigneeName,
     due_date: parseDisplayDate(task.dueDate),
     priority: toDbPriority(task.priority),
@@ -285,6 +289,17 @@ export async function restoreTaskRecord(task: CreatedTaskEntry, profileId?: stri
 
 function canSaveToSupabase(profileId?: string) {
   return canUseSupabaseBrowserClient() && isSupabaseUuid(profileId);
+}
+
+function resolveSelfProfileId(labels: Array<string | undefined>, currentUserName?: string, profileId?: string) {
+  if (!isSupabaseUuid(profileId) || !currentUserName) return null;
+
+  const normalizedCurrentUserName = normalizeUserLabel(currentUserName);
+  return labels.some((label) => normalizeUserLabel(label) === normalizedCurrentUserName) ? profileId : null;
+}
+
+function normalizeUserLabel(value?: string) {
+  return (value ?? "").trim().normalize("NFKC").toLowerCase();
 }
 
 function parseDisplayDate(value: string) {
