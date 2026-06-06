@@ -69,6 +69,7 @@ export type ApprovalRequestEntry = {
   finalApproverName?: string;
   priority: TaskPriority;
   dueDate: string;
+  department?: string;
   status: string;
   sourceIssueId?: string;
   taskId?: string;
@@ -197,7 +198,10 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
   const [assigneePerson, setAssigneePerson] = useState("未選択");
   const flowSteps = ["課題登録", "タスク振り分け", "担当者が実行", "完了報告", "承認後に完了"];
   const activeCreatedIssues = useMemo(() => createdIssues.filter((issue) => !issue.deletedAt), [createdIssues]);
-  const deletedCreatedIssues = useMemo(() => createdIssues.filter((issue) => issue.deletedAt), [createdIssues]);
+  const deletedCreatedIssues = useMemo(
+    () => createdIssues.filter((issue) => issue.deletedAt && canViewIssueForUser(issue, currentUserName, currentUserId, currentUserDepartment, appRole)),
+    [appRole, createdIssues, currentUserDepartment, currentUserId, currentUserName],
+  );
   const allIssues = useMemo(() => [...activeCreatedIssues, ...pageDemo.issues], [activeCreatedIssues]);
   const visibleIssues = allIssues
     .filter((issue) => !deletedIssueIds.includes(issue.id))
@@ -928,16 +932,22 @@ export function TasksPage({
   finalApprover?: ApprovalReviewerOption;
 }) {
   const activeCreatedTasks = useMemo(() => createdTasks.filter((task) => !task.deletedAt), [createdTasks]);
-  const deletedCreatedTasks = useMemo(() => createdTasks.filter((task) => task.deletedAt), [createdTasks]);
+  const deletedCreatedTasks = useMemo(
+    () => createdTasks.filter((task) => task.deletedAt && isTaskVisibleForUser(task, currentUserName, currentUserId, currentUserDepartment, appRole)),
+    [appRole, createdTasks, currentUserDepartment, currentUserId, currentUserName],
+  );
   const allSendbackTasks = useMemo(() => [...sendbackTasks, ...sendbackTaskSummaries], [sendbackTasks]);
   const canViewTeamWork = canViewAllWork(appRole);
+  const visibleSendbackTasks = useMemo(
+    () => canViewTeamWork ? allSendbackTasks : allSendbackTasks.filter((task) => isTaskVisibleForUser(task, currentUserName, currentUserId, currentUserDepartment, appRole)),
+    [allSendbackTasks, appRole, canViewTeamWork, currentUserDepartment, currentUserId, currentUserName],
+  );
   const allTaskSummaries = useMemo(() => {
     const baseMyTasks = canViewTeamWork ? myTasks : myTasks.filter((task) => isTaskVisibleForUser(task, currentUserName, currentUserId, currentUserDepartment, appRole));
     const baseTeamTasks = canViewTeamWork ? teamTaskSummaries : teamTaskSummaries.filter((task) => isTaskVisibleForUser(task, currentUserName, currentUserId, currentUserDepartment, appRole));
     const visibleCreatedTasks = canViewTeamWork ? activeCreatedTasks : activeCreatedTasks.filter((task) => isTaskVisibleForUser(task, currentUserName, currentUserId, currentUserDepartment, appRole));
-    const visibleSendbackTasks = canViewTeamWork ? allSendbackTasks : allSendbackTasks.filter((task) => isTaskVisibleForUser(task, currentUserName, currentUserId, currentUserDepartment, appRole));
     return [...baseMyTasks, ...visibleCreatedTasks, ...baseTeamTasks, ...visibleSendbackTasks];
-  }, [activeCreatedTasks, allSendbackTasks, appRole, canViewTeamWork, currentUserDepartment, currentUserId, currentUserName]);
+  }, [activeCreatedTasks, appRole, canViewTeamWork, currentUserDepartment, currentUserId, currentUserName, visibleSendbackTasks]);
   const myTaskSummaries = useMemo(
     () => allTaskSummaries.filter((task) => isTaskRelatedToCurrentUser(task, currentUserName, currentUserId)),
     [allTaskSummaries, currentUserId, currentUserName],
@@ -973,7 +983,7 @@ export function TasksPage({
         ? openTaskSummaries
         : taskView === "approval"
           ? approvalTaskSummaries
-          : allSendbackTasks,
+          : visibleSendbackTasks,
   );
   const sendbackTaskDetails = useMemo(
     () => Object.fromEntries(sendbackTasks.map((task) => [task.id, task])),
@@ -987,7 +997,7 @@ export function TasksPage({
     { key: "mine", label: "自分のタスク", count: openMyTaskSummaries.length },
     { key: "team", label: "チームタスク", count: openTaskSummaries.length },
     { key: "approval", label: "承認待ちタスク", count: approvalTaskSummaries.length },
-    { key: "sendback", label: "差し戻しタスク", count: allSendbackTasks.length },
+    { key: "sendback", label: "差し戻しタスク", count: visibleSendbackTasks.length },
   ] as const;
   const canUpdateTasks = can(appRole, "tasks", "update");
   const canDeleteTasks = can(appRole, "tasks", "delete");
@@ -1133,6 +1143,7 @@ export function TasksPage({
         finalApproverName: finalApprover?.name,
         priority: task.priority,
         dueDate: task.dueDate,
+        department: task.projectName,
         status: "承認待ち",
         taskId: task.id,
         taskSupabaseId: createdTaskDetail?.supabaseId,
@@ -1784,6 +1795,29 @@ function getApprovalCreatedAt(approval: ApprovalRequestEntry) {
   return approval.issueCreatedAt ?? approval.requestedAt ?? getApprovalIssueCreatedAt(approval.sourceIssueId);
 }
 
+function getApprovalDepartment(sourceIssueId?: string) {
+  return pageDemo.issues.find((issue) => issue.id === sourceIssueId)?.department;
+}
+
+function canViewApprovalForUser(approval: ApprovalRequestEntry, currentUserId: string | undefined, currentUserName: string, currentUserDepartment: string | undefined, appRole: AppRole) {
+  if (canViewAllWork(appRole)) return true;
+  if (approval.requesterId && currentUserId && approval.requesterId === currentUserId) return true;
+  if (isSamePersonName(approval.requester, currentUserName)) return true;
+
+  if (canViewDepartmentWork(appRole)) {
+    if (approval.reviewerId && currentUserId && approval.reviewerId === currentUserId) return true;
+    if (isSamePersonName(approval.reviewerName, currentUserName)) return true;
+    return isSameDepartmentLabel(approval.department ?? getApprovalDepartment(approval.sourceIssueId), currentUserDepartment);
+  }
+
+  return false;
+}
+
+function canViewApprovalHistoryForUser(approval: ApprovalHistoryEntry, currentUserName: string, appRole: AppRole) {
+  if (canViewAllWork(appRole)) return true;
+  return [approval.requester, approval.reviewerName, approval.finalApproverName, approval.approvedBy].some((name) => isSamePersonName(name, currentUserName));
+}
+
 export function ApprovalsPage({
   onNavigate,
   approvalRequests = [],
@@ -1796,6 +1830,7 @@ export function ApprovalsPage({
   appRole,
   currentUserId,
   currentUserName = "山田 太郎",
+  currentUserDepartment,
 }: ApprovalsPageProps) {
   const [activeAction, setActiveAction] = useState<ApprovalAction>(null);
   const [approvalView, setApprovalView] = useState<"pending" | "approved">("pending");
@@ -1806,15 +1841,18 @@ export function ApprovalsPage({
       ...pageDemo.approvals.map((approval) => ({
         ...approval,
         priority: approval.priority as TaskPriority,
+        department: getApprovalDepartment(approval.sourceIssueId),
       })),
     ],
     [approvalRequests],
   );
-  const pendingApprovals = allApprovals.filter((approval) => !resolvedApprovalIds.includes(approval.id));
-  const activeApproval = activeAction ? allApprovals.find((approval) => approval.id === activeAction.approvalId) : undefined;
+  const visibleApprovals = allApprovals.filter((approval) => canViewApprovalForUser(approval, currentUserId, currentUserName, currentUserDepartment, appRole ?? "member"));
+  const visibleApprovalHistory = approvalHistory.filter((approval) => canViewApprovalHistoryForUser(approval, currentUserName, appRole ?? "member"));
+  const pendingApprovals = visibleApprovals.filter((approval) => !resolvedApprovalIds.includes(approval.id));
+  const activeApproval = activeAction ? visibleApprovals.find((approval) => approval.id === activeAction.approvalId) : undefined;
   const approvalTabs = [
     { key: "pending", label: "承認待ち", count: pendingApprovals.length },
-    { key: "approved", label: "承認済み", count: approvalHistory.length },
+    { key: "approved", label: "承認済み", count: visibleApprovalHistory.length },
   ] as const;
   const canApproveRequests = can(appRole ?? "member", "approvals", "approve");
   const approvalActionPanelRef = useAutoScrollPanel(activeAction ? `${activeAction.approvalId}-${activeAction.mode}` : null);
@@ -1823,7 +1861,7 @@ export function ApprovalsPage({
     if (!activeAction || !activeApproval) return;
 
     if (activeAction.mode === "review") {
-      if (!canReviewApproval(activeApproval, currentUserId, appRole ?? "member")) return;
+      if (!canReviewApproval(activeApproval, currentUserId, appRole ?? "member", currentUserDepartment)) return;
       onReviewApproval?.(activeApproval, comment);
       setResultMessage(`${activeApproval.id} を確認済みにしました。コメント: ${comment}`);
       setActiveAction(null);
@@ -1831,7 +1869,7 @@ export function ApprovalsPage({
     }
 
     if (activeAction.mode === "sendback") {
-      if (!canSendBackApproval(activeApproval, currentUserId, appRole ?? "member")) return;
+      if (!canSendBackApproval(activeApproval, currentUserId, appRole ?? "member", currentUserDepartment)) return;
       onResolveApproval?.(activeApproval, "sendback", comment);
       setResultMessage(`${activeApproval.id} を差し戻しました。コメント: ${comment}`);
       if (activeApproval.taskId) {
@@ -1925,9 +1963,9 @@ export function ApprovalsPage({
               </div>
             </div>
             <div className="mt-4 flex gap-2">
-              <button className="h-9 rounded-lg border border-emerald-200 bg-emerald-50 px-4 text-sm font-bold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-300" type="button" disabled={!canReviewApproval(approval, currentUserId, appRole ?? "member") || Boolean(approval.reviewedAt)} onClick={() => setActiveAction({ approvalId: approval.id, mode: "review" })}>確認済みにする</button>
+              <button className="h-9 rounded-lg border border-emerald-200 bg-emerald-50 px-4 text-sm font-bold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-300" type="button" disabled={!canReviewApproval(approval, currentUserId, appRole ?? "member", currentUserDepartment) || Boolean(approval.reviewedAt)} onClick={() => setActiveAction({ approvalId: approval.id, mode: "review" })}>確認済みにする</button>
               <button className="h-9 rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300" type="button" disabled={!canApproveRequests || !canFinalizeApproval(approval, currentUserId, appRole ?? "member")} onClick={() => setActiveAction({ approvalId: approval.id, mode: "approve" })}>最終承認</button>
-              <button className="h-9 rounded-lg border border-slate-200 px-4 text-sm font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:text-slate-300" type="button" disabled={!canSendBackApproval(approval, currentUserId, appRole ?? "member")} onClick={() => setActiveAction({ approvalId: approval.id, mode: "sendback" })}>差し戻し</button>
+              <button className="h-9 rounded-lg border border-slate-200 px-4 text-sm font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:text-slate-300" type="button" disabled={!canSendBackApproval(approval, currentUserId, appRole ?? "member", currentUserDepartment)} onClick={() => setActiveAction({ approvalId: approval.id, mode: "sendback" })}>差し戻し</button>
             </div>
           </PanelCard>
         ))}
@@ -1942,7 +1980,7 @@ export function ApprovalsPage({
 
       {approvalView === "approved" ? (
         <div className="grid gap-4">
-          {approvalHistory.map((approval) => (
+          {visibleApprovalHistory.map((approval) => (
             <PanelCard key={`${approval.id}-${approval.approvedAt}`} className="p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
@@ -1960,7 +1998,7 @@ export function ApprovalsPage({
               </div>
             </PanelCard>
           ))}
-          {approvalHistory.length === 0 ? (
+          {visibleApprovalHistory.length === 0 ? (
             <PanelCard className="p-6 text-center">
               <h3 className="font-bold">承認済み履歴はまだありません</h3>
               <p className="mt-2 text-sm text-slate-500">承認ボタンから処理したものが、発生日付きでここに残ります。</p>
@@ -1987,14 +2025,15 @@ function canFinalizeApproval(approval: ApprovalRequestEntry, currentUserId?: str
   return canMakeFinalApprovalDecision(approval, currentUserId, appRole);
 }
 
-function canSendBackApproval(approval: ApprovalRequestEntry, currentUserId?: string, appRole: AppRole = "member") {
-  return canReviewApproval(approval, currentUserId, appRole) || canMakeFinalApprovalDecision(approval, currentUserId, appRole);
+function canSendBackApproval(approval: ApprovalRequestEntry, currentUserId?: string, appRole: AppRole = "member", currentUserDepartment?: string) {
+  return canReviewApproval(approval, currentUserId, appRole, currentUserDepartment) || canMakeFinalApprovalDecision(approval, currentUserId, appRole);
 }
 
-function canReviewApproval(approval: ApprovalRequestEntry, currentUserId?: string, appRole: AppRole = "member") {
+function canReviewApproval(approval: ApprovalRequestEntry, currentUserId?: string, appRole: AppRole = "member", currentUserDepartment?: string) {
   if (!currentUserId) return false;
   if (approval.reviewerId && approval.reviewerId === currentUserId) return true;
-  return appRole === "owner" || appRole === "admin";
+  if (appRole === "owner" || appRole === "admin") return true;
+  return canViewDepartmentWork(appRole) && isSameDepartmentLabel(approval.department ?? getApprovalDepartment(approval.sourceIssueId), currentUserDepartment);
 }
 
 function canMakeFinalApprovalDecision(approval: ApprovalRequestEntry, currentUserId?: string, appRole: AppRole = "member") {

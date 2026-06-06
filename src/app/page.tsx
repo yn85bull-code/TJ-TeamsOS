@@ -719,7 +719,7 @@ function ActivePage({
     case "tasks":
       return <TasksPage appRole={appRole} requesterName={requesterName} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} sendbackTasks={sendbackTasks} createdTasks={createdTasks} preferredView={preferredTaskView} approvalReviewerOptions={approvalReviewerOptions} finalApprover={finalApprover} onCreateApproval={onCreateApproval} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} onRestoreTask={onRestoreTask} />;
     case "approvals":
-      return <ApprovalsPage onNavigate={onNavigate} approvalRequests={approvalRequests} resolvedApprovalIds={resolvedApprovalIds} onResolveApproval={onResolveApproval} onReviewApproval={onReviewApproval} onSendBackTask={onSendBackTask} approvalHistory={approvalHistory} onRecordApproval={onRecordApproval} currentUserName={currentUserName} currentUserId={currentUserId} appRole={appRole} />;
+      return <ApprovalsPage onNavigate={onNavigate} approvalRequests={approvalRequests} resolvedApprovalIds={resolvedApprovalIds} onResolveApproval={onResolveApproval} onReviewApproval={onReviewApproval} onSendBackTask={onSendBackTask} approvalHistory={approvalHistory} onRecordApproval={onRecordApproval} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} appRole={appRole} />;
     case "teams":
       return <TeamsPage />;
     case "tauros_ai":
