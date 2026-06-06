@@ -17,9 +17,9 @@ export function Sidebar({
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-[240px] flex-col bg-[#080F14] px-4 py-5 text-white lg:flex">
       <div className="flex items-center gap-3 px-2">
-        <div className="grid size-10 place-items-center rounded-xl bg-[#D6001C] text-lg font-black">T</div>
+        <div className="grid size-10 place-items-center rounded-xl bg-[#D6001C] text-sm font-black">TJ</div>
         <div>
-          <h1 className="text-sm font-bold">Tauros TeamOS</h1>
+          <h1 className="text-sm font-bold">TJ-TeamOS</h1>
           <p className="text-[11px] text-slate-400">Work OS / MVP</p>
         </div>
       </div>

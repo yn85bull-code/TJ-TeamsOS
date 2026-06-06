@@ -120,7 +120,7 @@ export function TopHeader({
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between xl:gap-6">
         <div className="min-w-0">
           <h2 className="text-2xl font-bold tracking-tight text-slate-950">{displayTitle}</h2>
-          <p className="mt-1 text-sm text-slate-500">{descriptions[activeKey] ?? "Tauros TeamOSの状態を確認できます。"}</p>
+          <p className="mt-1 text-sm text-slate-500">{descriptions[activeKey] ?? "TJ-TeamOSの状態を確認できます。"}</p>
         </div>
 
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end xl:min-w-0">

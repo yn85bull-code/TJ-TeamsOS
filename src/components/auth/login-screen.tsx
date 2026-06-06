@@ -14,7 +14,7 @@ export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) 
   const [selectedUserId, setSelectedUserId] = useState(demoUsers[0].id);
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState("");
-  const [loginMode, setLoginMode] = useState<"demo" | "supabase">(canUseSupabaseBrowserClient() ? "supabase" : "demo");
+  const [loginMode, setLoginMode] = useState<"demo" | "supabase">("demo");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCheckingInvite, setIsCheckingInvite] = useState(false);
   const [inviteUser, setInviteUser] = useState<AuthUser | null>(null);
@@ -128,9 +128,9 @@ export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) 
         <section className="flex items-center justify-center px-5 py-8 lg:px-10">
           <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/70">
             <div className="flex items-center gap-3">
-              <div className="grid size-11 place-items-center rounded-lg bg-[#D6001C] text-lg font-black text-white">T</div>
+              <div className="grid size-11 place-items-center rounded-lg bg-[#D6001C] text-sm font-black text-white">TJ</div>
               <div>
-                <p className="text-sm font-bold text-[#D6001C]">Tauros TeamOS</p>
+                <p className="text-sm font-bold text-[#D6001C]">TJ-TeamOS</p>
                 <h1 className="text-2xl font-black tracking-tight">ログイン</h1>
               </div>
             </div>
@@ -293,10 +293,7 @@ export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) 
 
         <section className="hidden bg-[#080F14] p-8 text-white lg:flex lg:flex-col lg:justify-between">
           <div className="max-w-2xl">
-            <div className="inline-flex rounded-lg bg-white px-5 py-4 shadow-2xl shadow-black/30">
-              <img className="h-14 w-auto" src="/brand/tauros-logo.png" alt="TAUROS JAPAN" />
-            </div>
-            <p className="mt-8 text-sm font-bold uppercase tracking-[0.2em] text-red-300">TAUROS TEAMOS</p>
+            <p className="text-sm font-bold tracking-[0.2em] text-red-300">TJ-TeamOS</p>
             <h2 className="mt-4 max-w-3xl text-5xl font-black leading-tight tracking-tight">現場を動かす。判断を止めない。</h2>
             <p className="mt-5 max-w-xl text-base leading-8 text-slate-300">
               課題、タスク、承認、権限をひとつに。チームの進捗と意思決定を、迷わず前へ進めるWork OS。

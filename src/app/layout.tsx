@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Tauros TeamOS",
+  title: "TJ-TeamOS",
   description: "Team issue, task, approval, and progress management for Tauros Work OS.",
 };
 

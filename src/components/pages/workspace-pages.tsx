@@ -3503,7 +3503,7 @@ function PageFrame({ title, lead, children }: { title: string; lead: string; chi
   return (
     <div className="grid gap-5">
       <PanelCard className="p-6">
-        <p className="text-sm font-bold uppercase tracking-wide text-[#D6001C]">Tauros TeamOS</p>
+        <p className="text-sm font-bold tracking-wide text-[#D6001C]">TJ-TeamOS</p>
         <h2 className="mt-2 text-3xl font-black text-slate-950">{title}</h2>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-500">{lead}</p>
       </PanelCard>
