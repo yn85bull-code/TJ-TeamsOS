@@ -1,7 +1,7 @@
 import { AppRole } from "@/types/database";
 
 export type PermissionAction = "create" | "read" | "update" | "delete" | "approve" | "manage";
-export type PermissionResource = "issues" | "tasks" | "my_todo" | "approvals" | "teams" | "settings" | "ai_suggestions" | "tauros_ai" | "knowledge" | "reports" | "logs";
+export type PermissionResource = "issues" | "tasks" | "my_todo" | "teams_todo" | "approvals" | "teams" | "settings" | "ai_suggestions" | "tauros_ai" | "knowledge" | "reports" | "logs";
 
 const roleRank: Record<AppRole, number> = {
   owner: 100,
@@ -9,6 +9,7 @@ const roleRank: Record<AppRole, number> = {
   executive: 80,
   department_manager: 70,
   team_manager: 60,
+  leader: 60,
   member: 40,
   viewer: 10,
 };
@@ -17,9 +18,11 @@ const approvalRoles: AppRole[] = ["owner", "admin"];
 const managementRoles: AppRole[] = ["owner", "admin"];
 const deleteRoles: AppRole[] = ["owner"];
 const taurosAiManagementRoles: AppRole[] = ["owner", "admin"];
+const teamsTodoCreatorRoles: AppRole[] = ["owner", "admin", "department_manager", "leader"];
 
 export function normalizeAppRole(role: AppRole): AppRole {
-  if (role === "executive" || role === "team_manager") return "department_manager";
+  if (role === "executive") return "admin";
+  if (role === "team_manager") return "leader";
   if (role === "viewer") return "member";
   return role;
 }
@@ -29,6 +32,11 @@ export function can(role: AppRole, resource: PermissionResource, action: Permiss
 
   if (resource === "tauros_ai" && action === "read") return true;
   if (resource === "my_todo") return roleRank[normalizedRole] >= roleRank.member;
+  if (resource === "teams_todo") {
+    if (action === "read") return roleRank[normalizedRole] >= roleRank.member;
+    if (action === "create") return teamsTodoCreatorRoles.includes(normalizedRole);
+    if (action === "update" || action === "delete") return teamsTodoCreatorRoles.includes(normalizedRole);
+  }
   if (resource === "knowledge") {
     if (action === "read") return roleRank[normalizedRole] >= roleRank.member;
     if (action === "create" || action === "update" || action === "manage") return taurosAiManagementRoles.includes(normalizedRole);
@@ -49,7 +57,7 @@ export function canAccessNavItem(role: AppRole, key: string) {
 
   if (normalizedRole === "owner" || normalizedRole === "admin") return true;
 
-  if (normalizedRole === "department_manager") {
+  if (normalizedRole === "department_manager" || normalizedRole === "leader") {
     return ["dashboard", "issues", "tasks", "my_todo", "approvals", "teams", "ai", "tauros_ai"].includes(key);
   }
 
@@ -77,6 +85,7 @@ export function mapDemoRoleToAppRole(role: string): AppRole {
   if (normalized === "owner") return "owner";
   if (normalized === "admin") return "admin";
   if (normalized === "manager") return "department_manager";
+  if (normalized === "leader") return "leader";
   if (normalized === "member") return "member";
   if (normalized === "approver") return "department_manager";
   if (normalized === "editor") return "member";

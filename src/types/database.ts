@@ -6,6 +6,7 @@ export type AppRole =
   | "executive"
   | "department_manager"
   | "team_manager"
+  | "leader"
   | "member"
   | "viewer";
 
@@ -49,6 +50,11 @@ export type Database = {
           email: string | null;
           avatar_url: string | null;
           position: string | null;
+          organization: string | null;
+          department: string | null;
+          store: string | null;
+          employment_status: string | null;
+          joined_at: string | null;
           role: AppRole;
           department_id: string | null;
           team_id: string | null;
@@ -61,6 +67,11 @@ export type Database = {
           email?: string | null;
           avatar_url?: string | null;
           position?: string | null;
+          organization?: string | null;
+          department?: string | null;
+          store?: string | null;
+          employment_status?: string | null;
+          joined_at?: string | null;
           role?: AppRole;
           department_id?: string | null;
           team_id?: string | null;
@@ -372,6 +383,39 @@ export type Database = {
           deleted_at?: string | null;
         };
         Update: Partial<Database["public"]["Tables"]["my_todos"]["Insert"]>;
+      };
+      teams_todos: {
+        Row: {
+          id: string;
+          title: string;
+          memo: string | null;
+          due_date: string | null;
+          priority: MyTodoPriority;
+          status: MyTodoStatus;
+          target_organization: string;
+          created_by: string | null;
+          created_by_name: string | null;
+          completed_at: string | null;
+          created_at: string;
+          updated_at: string;
+          deleted_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          title: string;
+          memo?: string | null;
+          due_date?: string | null;
+          priority?: MyTodoPriority;
+          status?: MyTodoStatus;
+          target_organization: string;
+          created_by?: string | null;
+          created_by_name?: string | null;
+          completed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          deleted_at?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["teams_todos"]["Insert"]>;
       };
       ai_suggestions: {
         Row: {

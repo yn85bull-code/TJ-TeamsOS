@@ -6,8 +6,9 @@ import { normalizePriority, sortByPriorityAndDueDate } from "@/lib/domain/priori
 import { departmentProgress, kanbanColumns, myTasks, pageDemo, TaskPriority, TaskStatus, TaskSummary } from "@/lib/dashboard-demo-data";
 import { loadLocalTaskRecords, saveLocalTaskRecords, saveTaskRecord } from "@/lib/tasks/task-record-store";
 import { formatMyTodoDateTime, type MyTodoEntry, type MyTodoPriority, type MyTodoStatus } from "@/lib/workspace/my-todo-store";
+import { type TeamsTodoEntry } from "@/lib/workspace/teams-todo-store";
 import { DEFAULT_DEPARTMENTS, normalizeDepartmentList } from "@/lib/workspace/department-store";
-import { OPERATIONAL_ROLE_OPTIONS, TeamProfileEntry, demoUsersToProfiles, getRoleLabel, inviteTeamUser, loadTeamProfilesFromSupabase, updateProfileDepartmentAndPositionInSupabase, updateProfileRoleInSupabase } from "@/lib/workspace/profile-store";
+import { OPERATIONAL_ROLE_OPTIONS, TeamProfileEntry, demoUsersToProfiles, getRoleLabel, inviteTeamUser, loadTeamProfilesFromSupabase, updateProfileDepartmentAndPositionInSupabase, updateProfileEmploymentStatusInSupabase, updateProfileRoleInSupabase } from "@/lib/workspace/profile-store";
 import { AppRole } from "@/types/database";
 import { BookOpen, Bot, Building2, CalendarDays, CheckCircle2, ClipboardList, Clock, Database, FileText, Inbox, ListChecks, LockKeyhole, Pencil, Plus, Save, Search, Send, ShieldCheck, Trash2, Upload, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -23,8 +24,12 @@ type NavigateHandler = {
   onCreateMyTodo?: (todo: MyTodoEntry) => void;
   onUpdateMyTodo?: (todo: MyTodoEntry) => void;
   onDeleteMyTodo?: (todo: MyTodoEntry) => void;
+  onCreateTeamsTodo?: (todo: TeamsTodoEntry) => void;
+  onUpdateTeamsTodo?: (todo: TeamsTodoEntry) => void;
+  onDeleteTeamsTodo?: (todo: TeamsTodoEntry) => void;
   createdIssues?: CreatedIssueEntry[];
   myTodos?: MyTodoEntry[];
+  teamsTodos?: TeamsTodoEntry[];
   currentUserName?: string;
   currentUserId?: string;
   currentUserDepartment?: string;
@@ -327,7 +332,9 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
   };
 
   const restoreIssue = (issue: CreatedIssueEntry) => {
-    const { deletedAt: _deletedAt, deletedById: _deletedById, ...restoredIssue } = issue;
+    const restoredIssue = { ...issue };
+    delete restoredIssue.deletedAt;
+    delete restoredIssue.deletedById;
     setDeletedIssueIds((ids) => ids.filter((id) => id !== issue.id));
     onRestoreIssue?.(restoredIssue);
     setActionMessage(`${issue.id} を復元しました。課題一覧に戻しています。`);
@@ -960,12 +967,12 @@ export function TasksPage({
   const initialRecords = useMemo(() => buildInitialTaskRecords(allTaskSummaries), [allTaskSummaries]);
   const [taskRecords, setTaskRecords] = useState<Record<string, TaskRecord>>(initialRecords);
   const openTaskSummaries = useMemo(
-    () => allTaskSummaries.filter((task) => !isCompletedTaskForList(task, taskRecords)),
-    [allTaskSummaries, taskRecords],
+    () => allTaskSummaries.filter((task) => !isCompletedTaskForList(task)),
+    [allTaskSummaries],
   );
   const openMyTaskSummaries = useMemo(
-    () => myTaskSummaries.filter((task) => !isCompletedTaskForList(task, taskRecords)),
-    [myTaskSummaries, taskRecords],
+    () => myTaskSummaries.filter((task) => !isCompletedTaskForList(task)),
+    [myTaskSummaries],
   );
   const approvalTaskSummaries = useMemo(
     () => openTaskSummaries.filter((task) => isApprovalTaskForList(task, taskRecords)),
@@ -999,10 +1006,10 @@ export function TasksPage({
     [activeCreatedTasks],
   );
   const taskTabs = [
-    { key: "mine", label: "自分のタスク", count: openMyTaskSummaries.length },
-    { key: "team", label: "チームタスク", count: openTaskSummaries.length },
-    { key: "approval", label: "承認待ちタスク", count: approvalTaskSummaries.length },
-    { key: "sendback", label: "差し戻しタスク", count: visibleSendbackTasks.length },
+    { key: "mine", label: "自分のProject", count: openMyTaskSummaries.length },
+    { key: "team", label: "チームProject", count: openTaskSummaries.length },
+    { key: "approval", label: "承認待ちProject", count: approvalTaskSummaries.length },
+    { key: "sendback", label: "差し戻しProject", count: visibleSendbackTasks.length },
   ] as const;
   const canUpdateTasks = can(appRole, "tasks", "update");
   const canDeleteTasks = can(appRole, "tasks", "delete");
@@ -1174,13 +1181,15 @@ export function TasksPage({
   };
 
   const restoreTask = (task: CreatedTaskEntry) => {
-    const { deletedAt: _deletedAt, deletedById: _deletedById, ...restoredTask } = task;
+    const restoredTask = { ...task };
+    delete restoredTask.deletedAt;
+    delete restoredTask.deletedById;
     onRestoreTask?.(restoredTask);
     setSaveMessage(`${task.title} を復元しました。チームタスクに戻しています。`);
   };
 
   return (
-    <PageFrame title="タスク" lead="自分のタスクだけでなく、権限に応じてチーム全体・承認待ち・差し戻しタスクも確認できます。">
+    <PageFrame title="Project" lead="通常タスク、チームタスク、承認待ち、差し戻しをProjectとして管理します。MyToDo/TeamsToDoとは分けて扱います。">
       <PanelCard className="p-4">
         <div className="flex flex-wrap gap-2">
           {taskTabs.map((tab) => (
@@ -1693,13 +1702,13 @@ function buildProgressMemo(achievementMemo: string, nextActionMemo: string) {
   return achievement || nextAction || "進捗内容を更新しました。";
 }
 
-function isCompletedTaskForList(task: TaskSummary, _records: Record<string, TaskRecord>) {
+function isCompletedTaskForList(task: TaskSummary) {
   return task.status === "done";
 }
 
 function isApprovalTaskForList(task: TaskSummary, records: Record<string, TaskRecord>) {
   const record = records[task.id];
-  return !isCompletedTaskForList(task, records) && (task.status === "approval_pending" || Boolean(record?.approvalRequestedAt));
+  return !isCompletedTaskForList(task) && (task.status === "approval_pending" || Boolean(record?.approvalRequestedAt));
 }
 
 function createInitialTaskRecord(task: TaskSummary, index = 0): TaskRecord {
@@ -2120,16 +2129,6 @@ function ApprovalCommentPanel({
   );
 }
 
-const teamMembers = [
-  { department: "営業部", position: "Owner", name: "楢原悠太郎", permission: "Owner" },
-  { department: "営業部", position: "本部長", name: "山田 太郎", permission: "Admin" },
-  { department: "営業部", position: "課長", name: "山田 花子", permission: "Manager" },
-  { department: "買取部", position: "主任", name: "佐藤 一郎", permission: "Manager" },
-  { department: "販売部", position: "リーダー", name: "鈴木 太郎", permission: "Admin" },
-  { department: "総務部", position: "担当", name: "田中 美咲", permission: "Member" },
-  { department: "システム部", position: "管理者", name: "高橋 健", permission: "Admin" },
-];
-
 function PermissionBadge({ rank }: { rank: string }) {
   const config =
     rank === "Owner"
@@ -2145,55 +2144,327 @@ function PermissionBadge({ rank }: { rank: string }) {
   return <span className={`inline-flex min-w-20 justify-center rounded-md px-2 py-1 text-xs font-black ring-1 ${config}`}>{rank}</span>;
 }
 
-export function TeamsPage() {
+const organizationViewTabs = [
+  { key: "organization", label: "所属別" },
+  { key: "chart", label: "組織図" },
+  { key: "users", label: "ユーザー一覧" },
+  { key: "role", label: "権限別" },
+  { key: "position", label: "役職別" },
+] as const;
+
+type OrganizationViewKey = (typeof organizationViewTabs)[number]["key"];
+
+export function TeamsPage({
+  appRole = "member",
+  currentUserName = "ログインユーザー",
+  currentUserDepartment = "未設定",
+}: {
+  appRole?: AppRole;
+  currentUserName?: string;
+  currentUserDepartment?: string;
+} = {}) {
+  const [profiles, setProfiles] = useState<TeamProfileEntry[]>(demoUsersToProfiles());
+  const [profileStatus, setProfileStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [searchText, setSearchText] = useState("");
+  const [activeView, setActiveView] = useState<OrganizationViewKey>("organization");
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
+  const canViewAllProfiles = appRole === "owner" || appRole === "admin";
+
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (!cancelled) setProfileStatus("loading");
+    });
+    void loadTeamProfilesFromSupabase()
+      .then((result) => {
+        if (cancelled) return;
+        setProfiles(result.profiles.length ? result.profiles : demoUsersToProfiles());
+        setProfileStatus("ready");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn("Organization profile load failed.", error);
+        setProfiles(demoUsersToProfiles());
+        setProfileStatus("error");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const scopedProfiles = useMemo(() => {
+    if (canViewAllProfiles) return profiles;
+    return profiles.filter((profile) => getProfileOrganization(profile) === currentUserDepartment || profile.displayName === currentUserName);
+  }, [canViewAllProfiles, currentUserDepartment, currentUserName, profiles]);
+
+  const filteredProfiles = useMemo(() => {
+    const query = searchText.trim().toLowerCase();
+    if (!query) return scopedProfiles;
+    return scopedProfiles.filter((profile) =>
+      [
+        profile.displayName,
+        profile.email,
+        profile.departmentName,
+        profile.organization,
+        profile.position,
+        profile.roleLabel,
+        profile.employmentStatus,
+      ].some((value) => value.toLowerCase().includes(query)),
+    );
+  }, [scopedProfiles, searchText]);
+
+  const selectedProfile = filteredProfiles.find((profile) => profile.id === selectedProfileId) ?? filteredProfiles[0];
+  const organizationGroups = groupProfilesBy(filteredProfiles, getProfileOrganization);
+  const roleGroups = groupProfilesBy(filteredProfiles, (profile) => profile.roleLabel);
+  const positionGroups = groupProfilesBy(filteredProfiles, (profile) => profile.position || "未設定");
+
   return (
-    <PageFrame title="チーム" lead="部門名、役職名、名前、権限ランクをメンバー単位で管理します。">
+    <PageFrame title="Organization" lead="所属、役職、権限、在籍状態をひと目で確認できる組織ビューです。">
       <PanelCard className="p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="font-bold">メンバー権限一覧</h3>
-            <p className="mt-1 text-sm text-slate-500">ログインユーザーに紐づく権限ランクで、閲覧・編集・承認の範囲を制御します。</p>
+            <h3 className="font-bold">組織ダッシュボード</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              {canViewAllProfiles ? "Owner/Adminは全ユーザーを確認できます。" : `${currentUserDepartment}のユーザーだけを表示しています。`}
+            </p>
           </div>
-          <div className="grid size-10 place-items-center rounded-xl bg-slate-100 text-slate-700"><Users size={18} /></div>
+          <span className={`rounded-full px-3 py-1 text-xs font-bold ${profileStatus === "error" ? "bg-red-50 text-red-700" : profileStatus === "loading" ? "bg-blue-50 text-blue-700" : "bg-emerald-50 text-emerald-700"}`}>
+            {profileStatus === "loading" ? "読込中" : profileStatus === "error" ? "デモ表示" : `${filteredProfiles.length}名`}
+          </span>
         </div>
-        <div className="mt-5 overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left text-sm">
-            <thead className="border-y border-slate-200 bg-slate-50 text-xs text-slate-500">
-              <tr>
-                <th className="p-3">部門名</th>
-                <th className="p-3">役職名</th>
-                <th className="p-3">名前</th>
-                <th className="p-3">権限ランク</th>
-              </tr>
-            </thead>
-            <tbody>
-              {teamMembers.map((member) => (
-                <tr key={`${member.department}-${member.name}`} className="border-b border-slate-100 hover:bg-slate-50/70">
-                  <td className="p-3 font-semibold">{member.department}</td>
-                  <td className="p-3">{member.position}</td>
-                  <td className="p-3 font-bold text-slate-900">{member.name}</td>
-                  <td className="p-3"><PermissionBadge rank={member.permission} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="mt-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_260px] md:items-center">
+          <label className="flex h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-500">
+            <Search size={16} />
+            <input className="min-w-0 flex-1 bg-transparent text-slate-800 outline-none" value={searchText} onChange={(event) => setSearchText(event.currentTarget.value)} placeholder="氏名・メール・所属・役職・権限で検索" />
+          </label>
+          <div className="grid grid-cols-3 gap-2 text-center text-xs font-bold text-slate-500">
+            <span className="rounded-lg bg-slate-50 p-2">所属 {organizationGroups.length}</span>
+            <span className="rounded-lg bg-slate-50 p-2">権限 {roleGroups.length}</span>
+            <span className="rounded-lg bg-slate-50 p-2">在籍 {filteredProfiles.filter((profile) => profile.isActive).length}</span>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {organizationViewTabs.map((tab) => (
+            <button
+              key={tab.key}
+              className={`rounded-lg px-3 py-2 text-xs font-black transition ${activeView === tab.key ? "bg-[#D6001C] text-white shadow-sm" : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`}
+              type="button"
+              onClick={() => setActiveView(tab.key)}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </PanelCard>
 
-      <div className="grid gap-4 xl:grid-cols-3">
-        {pageDemo.teams.map((team) => (
-          <PanelCard key={team.team} className="p-5">
-            <h3 className="font-bold">{team.team}</h3>
-            <p className="mt-1 text-sm text-slate-500">{team.department}</p>
-            <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
-              <div className="rounded-lg bg-slate-50 p-3"><p className="text-slate-500">責任者</p><strong>{team.manager}</strong></div>
-              <div className="rounded-lg bg-slate-50 p-3"><p className="text-slate-500">人数</p><strong>{team.members}名</strong></div>
+      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <PanelCard className="p-5">
+          {activeView === "organization" ? <OrganizationGroupView groups={organizationGroups} onSelectProfile={setSelectedProfileId} /> : null}
+          {activeView === "chart" ? <OrganizationChartView groups={organizationGroups} onSelectProfile={setSelectedProfileId} /> : null}
+          {activeView === "users" ? <OrganizationUserTable profiles={filteredProfiles} onSelectProfile={setSelectedProfileId} /> : null}
+          {activeView === "role" ? <OrganizationGroupView groups={roleGroups} onSelectProfile={setSelectedProfileId} /> : null}
+          {activeView === "position" ? <OrganizationGroupView groups={positionGroups} onSelectProfile={setSelectedProfileId} /> : null}
+        </PanelCard>
+
+        <PanelCard className="p-5">
+          {selectedProfile ? (
+            <div>
+              <div className="flex items-start gap-3">
+                <div className="grid size-14 shrink-0 place-items-center rounded-xl bg-slate-950 text-lg font-black text-white">
+                  {getProfileInitial(selectedProfile.displayName)}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-black uppercase tracking-wide text-[#D6001C]">Profile</p>
+                  <h3 className="mt-1 truncate text-xl font-black text-slate-950">{selectedProfile.displayName}</h3>
+                  <p className="mt-1 truncate text-xs font-semibold text-slate-500">{selectedProfile.email || "メール未設定"}</p>
+                </div>
+              </div>
+              <div className="mt-5 grid gap-3 text-sm">
+                <OrganizationDetailRow label="所属" value={getProfileOrganization(selectedProfile)} />
+                <OrganizationDetailRow label="部門" value={selectedProfile.departmentName} />
+                <OrganizationDetailRow label="役職" value={selectedProfile.position} />
+                <OrganizationDetailRow label="権限" value={selectedProfile.roleLabel} />
+                <OrganizationDetailRow label="状態" value={selectedProfile.employmentStatus || (selectedProfile.isActive ? "在籍中" : "停止中")} />
+                <OrganizationDetailRow label="入社日" value={selectedProfile.joinedAt || "未設定"} />
+              </div>
+              <p className="mt-5 rounded-lg bg-slate-50 p-3 text-xs font-semibold leading-5 text-slate-500">
+                部門・役職・権限・アカウント停止の変更はSettingsのユーザー設定で行います。停止しても履歴データは削除しません。
+              </p>
             </div>
-          </PanelCard>
-        ))}
-      </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-slate-200 p-8 text-center">
+              <Users className="mx-auto text-slate-300" size={28} />
+              <p className="mt-3 text-sm font-bold text-slate-500">ユーザーを選択してください。</p>
+            </div>
+          )}
+        </PanelCard>
+      </section>
     </PageFrame>
   );
+}
+
+function OrganizationGroupView({
+  groups,
+  onSelectProfile,
+}: {
+  groups: Array<{ label: string; profiles: TeamProfileEntry[] }>;
+  onSelectProfile: (profileId: string) => void;
+}) {
+  return (
+    <div className="grid gap-4">
+      {groups.map((group) => (
+        <div key={group.label} className="rounded-lg border border-slate-100 bg-white p-4">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="font-black text-slate-950">{group.label}</h3>
+            <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-bold text-slate-600">{group.profiles.length}名</span>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {group.profiles.map((profile) => (
+              <OrganizationProfileButton key={profile.id} profile={profile} onSelectProfile={onSelectProfile} />
+            ))}
+          </div>
+        </div>
+      ))}
+      {groups.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-slate-200 p-8 text-center text-sm font-bold text-slate-500">該当するユーザーがいません。</div>
+      ) : null}
+    </div>
+  );
+}
+
+function OrganizationChartView({
+  groups,
+  onSelectProfile,
+}: {
+  groups: Array<{ label: string; profiles: TeamProfileEntry[] }>;
+  onSelectProfile: (profileId: string) => void;
+}) {
+  return (
+    <div className="grid gap-4">
+      {groups.map((group) => {
+        const managers = group.profiles.filter((profile) => profile.role === "owner" || profile.role === "admin" || profile.role === "department_manager" || profile.role === "leader");
+        const members = group.profiles.filter((profile) => !managers.includes(profile));
+        return (
+          <div key={`chart-${group.label}`} className="rounded-lg border border-slate-100 p-4">
+            <div className="flex items-center gap-2">
+              <Building2 className="text-[#D6001C]" size={18} />
+              <h3 className="font-black">{group.label}</h3>
+            </div>
+            <div className="mt-4 grid gap-3">
+              <div className="grid gap-2 rounded-lg bg-slate-50 p-3">
+                <p className="text-xs font-black uppercase tracking-wide text-slate-400">管理・確認ライン</p>
+                <div className="grid gap-2 md:grid-cols-2">
+                  {managers.map((profile) => <OrganizationProfileButton key={profile.id} profile={profile} onSelectProfile={onSelectProfile} />)}
+                  {managers.length === 0 ? <p className="text-sm font-semibold text-slate-500">未設定</p> : null}
+                </div>
+              </div>
+              <div className="grid gap-2 rounded-lg bg-white p-3 ring-1 ring-slate-100">
+                <p className="text-xs font-black uppercase tracking-wide text-slate-400">メンバー</p>
+                <div className="grid gap-2 md:grid-cols-2">
+                  {members.map((profile) => <OrganizationProfileButton key={profile.id} profile={profile} onSelectProfile={onSelectProfile} />)}
+                  {members.length === 0 ? <p className="text-sm font-semibold text-slate-500">未設定</p> : null}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function OrganizationUserTable({
+  profiles,
+  onSelectProfile,
+}: {
+  profiles: TeamProfileEntry[];
+  onSelectProfile: (profileId: string) => void;
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[760px] text-left text-sm">
+        <thead className="border-y border-slate-200 bg-slate-50 text-xs text-slate-500">
+          <tr>
+            <th className="p-3">ユーザー</th>
+            <th className="p-3">所属</th>
+            <th className="p-3">役職</th>
+            <th className="p-3">権限</th>
+            <th className="p-3">状態</th>
+          </tr>
+        </thead>
+        <tbody>
+          {profiles.map((profile) => (
+            <tr key={`row-${profile.id}`} className="cursor-pointer border-b border-slate-100 hover:bg-slate-50/70" onClick={() => onSelectProfile(profile.id)}>
+              <td className="p-3">
+                <p className="font-black text-slate-950">{profile.displayName}</p>
+                <p className="mt-1 text-xs font-semibold text-slate-500">{profile.email || "メール未設定"}</p>
+              </td>
+              <td className="p-3 font-bold text-slate-700">{getProfileOrganization(profile)}</td>
+              <td className="p-3 text-slate-600">{profile.position}</td>
+              <td className="p-3"><PermissionBadge rank={profile.roleLabel} /></td>
+              <td className="p-3">
+                <span className={`rounded-md px-2 py-1 text-xs font-black ring-1 ${profile.isActive ? "bg-emerald-50 text-emerald-700 ring-emerald-200" : "bg-slate-100 text-slate-500 ring-slate-200"}`}>
+                  {profile.employmentStatus || (profile.isActive ? "在籍中" : "停止中")}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function OrganizationProfileButton({
+  profile,
+  onSelectProfile,
+}: {
+  profile: TeamProfileEntry;
+  onSelectProfile: (profileId: string) => void;
+}) {
+  return (
+    <button className="flex min-w-0 items-center gap-3 rounded-lg border border-slate-100 bg-slate-50 p-3 text-left transition hover:border-[#D6001C] hover:bg-white" type="button" onClick={() => onSelectProfile(profile.id)}>
+      <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-white text-sm font-black text-slate-700 ring-1 ring-slate-200">
+        {getProfileInitial(profile.displayName)}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-black text-slate-950">{profile.displayName}</span>
+        <span className="mt-1 block truncate text-xs font-semibold text-slate-500">{profile.position} / {profile.roleLabel}</span>
+      </span>
+    </button>
+  );
+}
+
+function OrganizationDetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
+      <span className="text-xs font-bold text-slate-500">{label}</span>
+      <span className="text-right font-black text-slate-900">{value}</span>
+    </div>
+  );
+}
+
+function groupProfilesBy(profiles: TeamProfileEntry[], getKey: (profile: TeamProfileEntry) => string) {
+  const groups = new Map<string, TeamProfileEntry[]>();
+  profiles.forEach((profile) => {
+    const key = getKey(profile) || "未設定";
+    groups.set(key, [...(groups.get(key) ?? []), profile]);
+  });
+  return [...groups.entries()]
+    .map(([label, groupProfiles]) => ({
+      label,
+      profiles: groupProfiles.sort((left, right) => left.displayName.localeCompare(right.displayName, "ja")),
+    }))
+    .sort((left, right) => left.label.localeCompare(right.label, "ja"));
+}
+
+function getProfileOrganization(profile: TeamProfileEntry) {
+  return profile.organization || profile.departmentName || "未設定";
+}
+
+function getProfileInitial(name: string) {
+  return name.trim().charAt(0) || "U";
 }
 
 type TaurosKnowledgeItem = {
@@ -2863,7 +3134,8 @@ export function SettingsPage({
   appRole?: AppRole;
 } = {}) {
   const canManageSettings = can(appRole, "settings", "manage");
-  const canChangeUserRoles = appRole === "owner";
+  const canChangeUserRoles = appRole === "owner" || appRole === "admin";
+  const employmentStatusOptions = ["在籍中", "休職中", "停止中", "退職"] as const;
   const settingDetails = [
     {
       key: "users",
@@ -2871,7 +3143,7 @@ export function SettingsPage({
       icon: Users,
       status: "操作可能",
       lead: "ログインユーザーの氏名、所属部門、役職、権限ランクを管理します。",
-      items: ["氏名・メールアドレス", "所属部門・役職", "Owner固定", "権限変更はOwnerのみ"],
+      items: ["氏名・メールアドレス", "所属部門・役職", "Owner固定", "権限変更はOwner/Admin"],
     },
     {
       key: "permissions",
@@ -2879,7 +3151,7 @@ export function SettingsPage({
       icon: ShieldCheck,
       status: "操作可能",
       lead: "権限ランクを追加し、メンバーごとに閲覧・編集・管理範囲を制御します。",
-      items: ["Owner: 全権限・最終承認", "Admin: 管理者", "Manager: 部門/チーム管理", "Member: 作業担当"],
+      items: ["Owner: 全権限・最終承認", "Admin: 管理者", "Manager: 部門/チーム管理", "Leader: 現場リード", "Member: 作業担当"],
     },
     {
       key: "notifications",
@@ -3045,6 +3317,10 @@ export function SettingsPage({
 
   const inviteUser = async () => {
     if (!canChangeUserRoles) return;
+    if (!inviteName.trim() || !inviteEmail.trim() || !inviteDepartment.trim() || !invitePosition.trim()) {
+      setInviteStatus("氏名、メール、所属、役職を入力してください。");
+      return;
+    }
     if (currentAuthSource !== "supabase") {
       setInviteStatus("招待メール送信は本ログイン時に利用できます。デモでは入力フォームの確認のみ可能です。");
       return;
@@ -3167,6 +3443,47 @@ export function SettingsPage({
     }
   };
 
+  const updateProfileEmploymentStatus = async (profile: TeamProfileEntry, employmentStatus: string) => {
+    if (!canChangeUserRoles || profile.role === "owner") return;
+    const isActive = employmentStatus !== "停止中" && employmentStatus !== "退職";
+    const previousProfiles = profiles;
+    setSavingProfileId(profile.id);
+    setProfileMessage(`${profile.displayName}さんの状態を${employmentStatus}に更新しています。`);
+    setProfiles((items) =>
+      items.map((item) =>
+        item.id === profile.id
+          ? { ...item, employmentStatus, isActive }
+          : item,
+      ),
+    );
+
+    try {
+      const result = await updateProfileEmploymentStatusInSupabase(profile.id, {
+        employmentStatus,
+        isActive,
+      });
+      if (result.profile) {
+        applyUpdatedProfile({
+          ...result.profile,
+          departmentName: profile.departmentName,
+          position: profile.position,
+          employmentStatus,
+          isActive,
+        });
+      }
+      setProfileMessage(result.source === "supabase"
+        ? `${profile.displayName}さんの状態を${employmentStatus}に更新しました。`
+        : `${profile.displayName}さんの状態をデモ表示上で更新しました。Supabase反映には本ログインが必要です。`);
+    } catch (error) {
+      console.warn("Profile employment status update failed.", error);
+      setProfiles(previousProfiles);
+      const message = error instanceof Error ? error.message : "ユーザー状態の更新に失敗しました。";
+      setProfileMessage(message);
+    } finally {
+      setSavingProfileId(null);
+    }
+  };
+
   return (
     <PageFrame title="設定" lead="通知、権限、外部連携、AI連携、承認ルールを管理します。">
       <PanelCard className="p-5">
@@ -3175,7 +3492,7 @@ export function SettingsPage({
             <h3 className="font-bold">権限ランク追加</h3>
             <p className="mt-1 text-sm text-slate-500">チームページで使う権限ランクを追加できます。本実装ではログインユーザーIDにこのランクを紐づけます。</p>
             {!canChangeUserRoles ? (
-              <p className="mt-2 text-xs font-bold text-slate-500">現在のログイン: {currentUserName} / 権限変更はOwnerのみ可能です。</p>
+              <p className="mt-2 text-xs font-bold text-slate-500">現在のログイン: {currentUserName} / ユーザー管理はOwner/Adminのみ可能です。</p>
             ) : null}
           </div>
           <PermissionBadge rank="Admin" />
@@ -3274,7 +3591,7 @@ export function SettingsPage({
                 <div>
                   <h4 className="text-sm font-bold">ユーザー権限一覧</h4>
                   <p className="mt-1 text-xs leading-5 text-slate-500">
-                    Ownerは楢原悠太郎さんのみ固定です。Admin/Manager/MemberはOwnerが変更できます。
+                    Ownerは楢原悠太郎さんのみ固定です。Admin/Manager/Leader/MemberはOwner/Adminが変更できます。
                   </p>
                 </div>
                 <span className={`rounded-full px-3 py-1 text-xs font-bold ${profileStatus === "error" ? "bg-red-50 text-red-700" : profileStatus === "loading" ? "bg-blue-50 text-blue-700" : "bg-emerald-50 text-emerald-700"}`}>
@@ -3297,7 +3614,7 @@ export function SettingsPage({
                   <div>
                     <h5 className="text-sm font-black text-slate-900">ユーザー招待</h5>
                     <p className="mt-1 text-xs leading-5 text-slate-500">
-                      Ownerが新しいメンバーへ招待メールを送り、初期権限をprofilesへ登録します。
+                      Owner/Adminが新しいメンバーへ招待メールを送り、初期権限をprofilesへ登録します。
                     </p>
                   </div>
                   <span className={`rounded-full px-3 py-1 text-xs font-bold ${currentAuthSource === "supabase" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
@@ -3350,7 +3667,7 @@ export function SettingsPage({
                   <button
                     className="h-10 rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
                     type="button"
-                    disabled={!canChangeUserRoles || isInviting || !inviteName.trim() || !inviteEmail.trim()}
+                    disabled={!canChangeUserRoles || isInviting || !inviteName.trim() || !inviteEmail.trim() || !inviteDepartment.trim() || !invitePosition.trim()}
                     onClick={() => void inviteUser()}
                   >
                     {isInviting ? "送信中" : "招待"}
@@ -3379,6 +3696,7 @@ export function SettingsPage({
                       const isSaving = savingProfileId === profile.id;
                       const canEditRole = canChangeUserRoles && !isOwner;
                       const canEditProfileDetails = canChangeUserRoles;
+                      const canEditEmploymentStatus = canChangeUserRoles && !isOwner;
                       const draft = getProfileDraft(profile);
                       const profileDepartmentOptions = normalizeDepartmentList([...normalizedDepartments, profile.departmentName, draft.departmentName]);
                       const normalizedDraftPosition = draft.position.trim() || "未設定";
@@ -3449,9 +3767,20 @@ export function SettingsPage({
                             )}
                           </td>
                           <td className="p-3">
-                            <span className={`inline-flex min-w-20 justify-center rounded-md px-2 py-1 text-xs font-black ring-1 ${profile.isActive ? "bg-emerald-50 text-emerald-700 ring-emerald-200" : "bg-slate-100 text-slate-500 ring-slate-200"}`}>
-                              {profile.isActive ? "有効" : "停止"}
-                            </span>
+                            {isOwner ? (
+                              <span className="inline-flex min-w-20 justify-center rounded-md bg-red-50 px-2 py-1 text-xs font-black text-red-700 ring-1 ring-red-200">Owner固定</span>
+                            ) : (
+                              <select
+                                className={`h-10 min-w-28 rounded-lg border px-3 text-sm font-bold outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 ${profile.isActive ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-100 text-slate-500"}`}
+                                value={profile.employmentStatus || (profile.isActive ? "在籍中" : "停止中")}
+                                disabled={!canEditEmploymentStatus || isSaving}
+                                onChange={(event) => void updateProfileEmploymentStatus(profile, event.currentTarget.value)}
+                              >
+                                {employmentStatusOptions.map((status) => (
+                                  <option key={`${profile.id}-${status}`} value={status}>{status}</option>
+                                ))}
+                              </select>
+                            )}
                           </td>
                         </tr>
                       );
@@ -3575,20 +3904,30 @@ const myTodoStatusOptions: Array<{ value: MyTodoStatus; label: string }> = [
 
 export function MyTodoPage({
   myTodos = [],
+  teamsTodos = [],
   currentUserName = "ログインユーザー",
   currentUserId = "local-user",
+  currentUserDepartment = "未設定",
+  appRole = "member",
   onCreateMyTodo,
   onUpdateMyTodo,
   onDeleteMyTodo,
+  onCreateTeamsTodo,
+  onUpdateTeamsTodo,
+  onDeleteTeamsTodo,
 }: NavigateHandler) {
+  const [activeTodoTab, setActiveTodoTab] = useState<"mine" | "team">("mine");
   const [draft, setDraft] = useState<MyTodoFormState>(emptyMyTodoForm);
   const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<MyTodoFormState>(emptyMyTodoForm);
   const [notice, setNotice] = useState("");
   const activeTodos = useMemo(() => sortMyTodos(myTodos.filter((todo) => !todo.deletedAt)), [myTodos]);
+  const activeTeamsTodos = useMemo(() => sortTeamsTodos(teamsTodos.filter((todo) => !todo.deletedAt)), [teamsTodos]);
   const openTodos = activeTodos.filter((todo) => todo.status !== "done");
-  const highPriorityCount = openTodos.filter((todo) => todo.priority === "high").length;
-  const nearDueCount = openTodos.filter((todo) => isMyTodoNearDue(todo.dueDate)).length;
+  const openTeamsTodos = activeTeamsTodos.filter((todo) => todo.status !== "done");
+  const summaryTodos = activeTodoTab === "team" ? openTeamsTodos : openTodos;
+  const summaryHighPriorityCount = summaryTodos.filter((todo) => todo.priority === "high").length;
+  const summaryNearDueCount = summaryTodos.filter((todo) => isMyTodoNearDue(todo.dueDate)).length;
   const editingTodo = editingTodoId ? activeTodos.find((todo) => todo.id === editingTodoId) : undefined;
 
   const createTodo = (event: React.FormEvent<HTMLFormElement>) => {
@@ -3690,7 +4029,7 @@ export function MyTodoPage({
             </div>
             <div>
               <p className="text-xs font-bold text-slate-500">未完了</p>
-              <p className="text-2xl font-black text-slate-950">{openTodos.length}<span className="ml-1 text-sm text-slate-500">件</span></p>
+              <p className="text-2xl font-black text-slate-950">{summaryTodos.length}<span className="ml-1 text-sm text-slate-500">件</span></p>
             </div>
           </div>
         </PanelCard>
@@ -3701,7 +4040,7 @@ export function MyTodoPage({
             </div>
             <div>
               <p className="text-xs font-bold text-slate-500">期限が近い</p>
-              <p className="text-2xl font-black text-slate-950">{nearDueCount}<span className="ml-1 text-sm text-slate-500">件</span></p>
+              <p className="text-2xl font-black text-slate-950">{summaryNearDueCount}<span className="ml-1 text-sm text-slate-500">件</span></p>
             </div>
           </div>
         </PanelCard>
@@ -3712,12 +4051,30 @@ export function MyTodoPage({
             </div>
             <div>
               <p className="text-xs font-bold text-slate-500">高優先度</p>
-              <p className="text-2xl font-black text-slate-950">{highPriorityCount}<span className="ml-1 text-sm text-slate-500">件</span></p>
+              <p className="text-2xl font-black text-slate-950">{summaryHighPriorityCount}<span className="ml-1 text-sm text-slate-500">件</span></p>
             </div>
           </div>
         </PanelCard>
       </section>
 
+      <div className="flex flex-wrap gap-2">
+        {[
+          { key: "mine", label: "自分のToDo", count: activeTodos.length },
+          { key: "team", label: "所属ToDo", count: activeTeamsTodos.length },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-black transition ${activeTodoTab === tab.key ? "bg-[#D6001C] text-white shadow-sm" : "bg-slate-100 text-slate-700 hover:bg-slate-200"}`}
+            type="button"
+            onClick={() => setActiveTodoTab(tab.key as "mine" | "team")}
+          >
+            {tab.label}
+            <span className={`rounded-full px-2 py-0.5 text-xs ${activeTodoTab === tab.key ? "bg-white/20 text-white" : "bg-white text-slate-600"}`}>{tab.count}</span>
+          </button>
+        ))}
+      </div>
+
+      {activeTodoTab === "mine" ? (
       <section className="grid gap-5 xl:grid-cols-[420px_minmax(0,1fr)]">
         <PanelCard className="p-5">
           <div className="flex items-center justify-between gap-3">
@@ -3873,11 +4230,321 @@ export function MyTodoPage({
           </PanelCard>
         </div>
       </section>
+      ) : (
+        <TeamsTodoSection
+          teamsTodos={activeTeamsTodos}
+          currentUserName={currentUserName}
+          currentUserId={currentUserId}
+          currentUserDepartment={currentUserDepartment}
+          appRole={appRole}
+          onCreateTeamsTodo={onCreateTeamsTodo}
+          onUpdateTeamsTodo={onUpdateTeamsTodo}
+          onDeleteTeamsTodo={onDeleteTeamsTodo}
+        />
+      )}
     </PageFrame>
   );
 }
 
+function TeamsTodoSection({
+  teamsTodos = [],
+  currentUserName = "ログインユーザー",
+  currentUserId = "local-user",
+  currentUserDepartment = "未設定",
+  appRole = "member",
+  onCreateTeamsTodo,
+  onUpdateTeamsTodo,
+  onDeleteTeamsTodo,
+}: NavigateHandler) {
+  const [draft, setDraft] = useState<MyTodoFormState>(emptyMyTodoForm);
+  const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<MyTodoFormState>(emptyMyTodoForm);
+  const [notice, setNotice] = useState("");
+  const activeTeamsTodos = useMemo(() => sortTeamsTodos(teamsTodos.filter((todo) => !todo.deletedAt)), [teamsTodos]);
+  const editingTodo = editingTodoId ? activeTeamsTodos.find((todo) => todo.id === editingTodoId) : undefined;
+  const canManageTeamsTodo = can(appRole, "teams_todo", "create");
+
+  const createTodo = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canManageTeamsTodo) {
+      setNotice("TeamsToDoの登録はManager以上の権限で利用できます。");
+      return;
+    }
+    const title = draft.title.trim();
+    if (!title) {
+      setNotice("タイトルを入力してください。");
+      return;
+    }
+
+    const now = formatMyTodoDateTime(new Date());
+    onCreateTeamsTodo?.({
+      id: `teamtodo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      title,
+      memo: draft.memo.trim(),
+      dueDate: draft.dueDate,
+      priority: draft.priority,
+      status: draft.status,
+      targetOrganization: currentUserDepartment || "未設定",
+      createdById: currentUserId,
+      createdByName: currentUserName,
+      completedAt: draft.status === "done" ? now : undefined,
+      createdAt: now,
+      updatedAt: now,
+    });
+    setDraft(emptyMyTodoForm);
+    setNotice("TeamsToDoを登録しました。");
+  };
+
+  const startEdit = (todo: TeamsTodoEntry) => {
+    if (!canManageTeamsTodo) return;
+    setEditingTodoId(todo.id);
+    setEditDraft({
+      title: todo.title,
+      memo: todo.memo,
+      dueDate: todo.dueDate,
+      priority: todo.priority,
+      status: todo.status,
+    });
+    setNotice("");
+  };
+
+  const saveEdit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editingTodo || !canManageTeamsTodo) return;
+    const title = editDraft.title.trim();
+    if (!title) {
+      setNotice("タイトルを入力してください。");
+      return;
+    }
+
+    const now = formatMyTodoDateTime(new Date());
+    onUpdateTeamsTodo?.({
+      ...editingTodo,
+      title,
+      memo: editDraft.memo.trim(),
+      dueDate: editDraft.dueDate,
+      priority: editDraft.priority,
+      status: editDraft.status,
+      completedAt: editDraft.status === "done" ? editingTodo.completedAt ?? now : undefined,
+      updatedAt: now,
+    });
+    setEditingTodoId(null);
+    setEditDraft(emptyMyTodoForm);
+    setNotice("TeamsToDoを更新しました。");
+  };
+
+  const updateTodoStatus = (todo: TeamsTodoEntry, status: MyTodoStatus) => {
+    if (!canManageTeamsTodo) return;
+    const now = formatMyTodoDateTime(new Date());
+    onUpdateTeamsTodo?.({
+      ...todo,
+      status,
+      completedAt: status === "done" ? todo.completedAt ?? now : undefined,
+      updatedAt: now,
+    });
+    setNotice(status === "done" ? "TeamsToDoを完了にしました。" : "ステータスを更新しました。");
+  };
+
+  const updateTodoPriority = (todo: TeamsTodoEntry, priority: MyTodoPriority) => {
+    if (!canManageTeamsTodo) return;
+    onUpdateTeamsTodo?.({ ...todo, priority, updatedAt: formatMyTodoDateTime(new Date()) });
+    setNotice("優先度を更新しました。");
+  };
+
+  const toggleDone = (todo: TeamsTodoEntry) => {
+    updateTodoStatus(todo, todo.status === "done" ? "not_started" : "done");
+  };
+
+  const deleteTodo = (todo: TeamsTodoEntry) => {
+    if (!canManageTeamsTodo) return;
+    const now = formatMyTodoDateTime(new Date());
+    onDeleteTeamsTodo?.({ ...todo, deletedAt: now, updatedAt: now });
+    if (editingTodoId === todo.id) setEditingTodoId(null);
+    setNotice("TeamsToDoを削除しました。");
+  };
+
+  return (
+    <section className="grid gap-5 xl:grid-cols-[420px_minmax(0,1fr)]">
+      <PanelCard className="p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="font-black">所属ToDo登録</h3>
+            <p className="mt-1 text-xs font-semibold text-slate-500">
+              {currentUserDepartment}内で共有する軽いToDoです。承認フローには入りません。
+            </p>
+          </div>
+          <span className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">
+            {canManageTeamsTodo ? "Manager以上" : "閲覧のみ"}
+          </span>
+        </div>
+        {!canManageTeamsTodo ? (
+          <p className="mt-4 rounded-lg border border-amber-100 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-700">
+            Memberは所属ToDoを確認できますが、新規登録・編集・削除はできません。
+          </p>
+        ) : null}
+        <form className="mt-5 grid gap-4" onSubmit={createTodo}>
+          <label className="grid gap-2 text-sm font-bold text-slate-700">
+            タイトル
+            <input className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C] disabled:bg-slate-50" value={draft.title} disabled={!canManageTeamsTodo} onChange={(event) => setDraft({ ...draft, title: event.currentTarget.value })} placeholder="例: 営業部で共有する確認事項" />
+          </label>
+          <label className="grid gap-2 text-sm font-bold text-slate-700">
+            メモ
+            <textarea className="min-h-28 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C] disabled:bg-slate-50" value={draft.memo} disabled={!canManageTeamsTodo} onChange={(event) => setDraft({ ...draft, memo: event.currentTarget.value })} placeholder="課題化する前の共有メモ" />
+          </label>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label className="grid gap-2 text-sm font-bold text-slate-700">
+              期限
+              <input className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C] disabled:bg-slate-50" type="date" value={draft.dueDate} disabled={!canManageTeamsTodo} onChange={(event) => setDraft({ ...draft, dueDate: event.currentTarget.value })} />
+            </label>
+            <label className="grid gap-2 text-sm font-bold text-slate-700">
+              優先度
+              <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C] disabled:bg-slate-50" value={draft.priority} disabled={!canManageTeamsTodo} onChange={(event) => setDraft({ ...draft, priority: event.currentTarget.value as MyTodoPriority })}>
+                {myTodoPriorityOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            <label className="grid gap-2 text-sm font-bold text-slate-700">
+              ステータス
+              <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C] disabled:bg-slate-50" value={draft.status} disabled={!canManageTeamsTodo} onChange={(event) => setDraft({ ...draft, status: event.currentTarget.value as MyTodoStatus })}>
+                {myTodoStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+          </div>
+          <button className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#D6001C] px-4 py-3 text-sm font-black text-white shadow-sm hover:bg-[#b80018] disabled:cursor-not-allowed disabled:bg-slate-300" type="submit" disabled={!canManageTeamsTodo}>
+            <Plus size={16} />
+            登録
+          </button>
+          {notice ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">{notice}</p> : null}
+        </form>
+      </PanelCard>
+
+      <div className="grid gap-5">
+        {editingTodo ? (
+          <PanelCard className="border-[#D6001C]/30 p-5">
+            <form className="grid gap-4" onSubmit={saveEdit}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold text-[#D6001C]">所属ToDo編集中</p>
+                  <h3 className="mt-1 font-black">{editingTodo.title}</h3>
+                </div>
+                <button className="grid size-9 place-items-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50" type="button" aria-label="編集を閉じる" onClick={() => setEditingTodoId(null)}>
+                  <X size={16} />
+                </button>
+              </div>
+              <label className="grid gap-2 text-sm font-bold text-slate-700">
+                タイトル
+                <input className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={editDraft.title} onChange={(event) => setEditDraft({ ...editDraft, title: event.currentTarget.value })} />
+              </label>
+              <label className="grid gap-2 text-sm font-bold text-slate-700">
+                メモ
+                <textarea className="min-h-24 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={editDraft.memo} onChange={(event) => setEditDraft({ ...editDraft, memo: event.currentTarget.value })} />
+              </label>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="grid gap-2 text-sm font-bold text-slate-700">
+                  期限
+                  <input className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" type="date" value={editDraft.dueDate} onChange={(event) => setEditDraft({ ...editDraft, dueDate: event.currentTarget.value })} />
+                </label>
+                <label className="grid gap-2 text-sm font-bold text-slate-700">
+                  優先度
+                  <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={editDraft.priority} onChange={(event) => setEditDraft({ ...editDraft, priority: event.currentTarget.value as MyTodoPriority })}>
+                    {myTodoPriorityOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+                <label className="grid gap-2 text-sm font-bold text-slate-700">
+                  ステータス
+                  <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={editDraft.status} onChange={(event) => setEditDraft({ ...editDraft, status: event.currentTarget.value as MyTodoStatus })}>
+                    {myTodoStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+              </div>
+              <button className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 py-3 text-sm font-black text-white hover:bg-slate-800" type="submit">
+                <Save size={16} />
+                保存
+              </button>
+            </form>
+          </PanelCard>
+        ) : null}
+
+        <PanelCard className="p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="font-black">TeamsToDo一覧</h3>
+              <p className="mt-1 text-xs font-semibold text-slate-500">{currentUserDepartment}に紐づくToDoのみ表示します。</p>
+            </div>
+            <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-bold text-slate-600">{activeTeamsTodos.length}件</span>
+          </div>
+          <div className="mt-5 grid gap-3">
+            {activeTeamsTodos.map((todo) => (
+              <article key={todo.id} className="rounded-lg border border-slate-200 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <MyTodoPriorityBadge priority={todo.priority} />
+                      <MyTodoStatusBadge status={todo.status} />
+                      <span className={`text-xs font-bold ${isMyTodoOverdue(todo.dueDate, todo.status) ? "text-[#D6001C]" : "text-slate-500"}`}>{formatMyTodoDueDate(todo.dueDate)}</span>
+                    </div>
+                    <h4 className="mt-3 text-base font-black text-slate-950">{todo.title}</h4>
+                    {todo.memo ? <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{todo.memo}</p> : null}
+                    <p className="mt-3 text-xs font-semibold text-slate-400">
+                      作成者: {todo.createdByName} / 対象: {todo.targetOrganization} / 作成 {todo.createdAt} / 更新 {todo.updatedAt}
+                      {todo.completedAt ? ` / 完了 ${todo.completedAt}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button className={`inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-black disabled:cursor-not-allowed disabled:opacity-50 ${todo.status === "done" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`} type="button" disabled={!canManageTeamsTodo} onClick={() => toggleDone(todo)}>
+                      <CheckCircle2 size={14} />
+                      {todo.status === "done" ? "完了済み" : "完了"}
+                    </button>
+                    <button className="grid size-9 place-items-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50" type="button" disabled={!canManageTeamsTodo} aria-label="編集" onClick={() => startEdit(todo)}>
+                      <Pencil size={15} />
+                    </button>
+                    <button className="grid size-9 place-items-center rounded-lg border border-red-100 text-[#D6001C] hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50" type="button" disabled={!canManageTeamsTodo} aria-label="削除" onClick={() => deleteTodo(todo)}>
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <label className="grid gap-1 text-xs font-bold text-slate-500">
+                    ステータス
+                    <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#D6001C] disabled:bg-slate-50" value={todo.status} disabled={!canManageTeamsTodo} onChange={(event) => updateTodoStatus(todo, event.currentTarget.value as MyTodoStatus)}>
+                      {myTodoStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                  </label>
+                  <label className="grid gap-1 text-xs font-bold text-slate-500">
+                    優先度
+                    <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#D6001C] disabled:bg-slate-50" value={todo.priority} disabled={!canManageTeamsTodo} onChange={(event) => updateTodoPriority(todo, event.currentTarget.value as MyTodoPriority)}>
+                      {myTodoPriorityOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                  </label>
+                </div>
+              </article>
+            ))}
+            {activeTeamsTodos.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-200 p-8 text-center">
+                <p className="font-black text-slate-900">TeamsToDoはまだありません。</p>
+                <p className="mt-2 text-sm font-semibold text-slate-500">所属内で共有したい軽いToDoを登録できます。</p>
+              </div>
+            ) : null}
+          </div>
+        </PanelCard>
+      </div>
+    </section>
+  );
+}
+
 function sortMyTodos(todos: MyTodoEntry[]) {
+  return [...todos].sort((left, right) => {
+    const leftDone = left.status === "done";
+    const rightDone = right.status === "done";
+    if (leftDone !== rightDone) return leftDone ? 1 : -1;
+    const priorityDiff = getMyTodoPriorityRank(right.priority) - getMyTodoPriorityRank(left.priority);
+    if (priorityDiff !== 0) return priorityDiff;
+    const dueDiff = getMyTodoDueTime(left.dueDate) - getMyTodoDueTime(right.dueDate);
+    if (dueDiff !== 0) return dueDiff;
+    return right.updatedAt.localeCompare(left.updatedAt);
+  });
+}
+
+function sortTeamsTodos(todos: TeamsTodoEntry[]) {
   return [...todos].sort((left, right) => {
     const leftDone = left.status === "done";
     const rightDone = right.status === "done";

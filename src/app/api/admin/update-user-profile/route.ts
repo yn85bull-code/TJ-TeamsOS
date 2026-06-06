@@ -32,7 +32,7 @@ type ProfileUpdateTable = {
   };
 };
 
-const allowedManagedRoles: AppRole[] = ["admin", "department_manager", "member"];
+const allowedManagedRoles: AppRole[] = ["admin", "department_manager", "leader", "member"];
 
 export async function POST(request: NextRequest) {
   try {
@@ -41,20 +41,27 @@ export async function POST(request: NextRequest) {
     const hasRole = hasOwn(payload, "role");
     const hasDepartmentName = hasOwn(payload, "departmentName");
     const hasPosition = hasOwn(payload, "position");
+    const hasIsActive = hasOwn(payload, "isActive");
+    const hasEmploymentStatus = hasOwn(payload, "employmentStatus");
     const role = hasRole ? normalizeManagedRole(payload.role) : undefined;
     const departmentName = hasDepartmentName ? normalizeText(payload.departmentName) : undefined;
     const position = hasPosition ? normalizeText(payload.position) || "未設定" : undefined;
+    const isActive = hasIsActive ? Boolean(payload.isActive) : undefined;
+    const employmentStatus = hasEmploymentStatus ? normalizeText(payload.employmentStatus) : undefined;
 
     if (!profileId) {
       return NextResponse.json({ error: "更新対象のユーザーを確認してください。" }, { status: 400 });
     }
     if (hasRole && !role) {
-      return NextResponse.json({ error: "Owner以外へ変更できる権限はAdmin / Manager / Memberです。" }, { status: 400 });
+      return NextResponse.json({ error: "Owner以外へ変更できる権限はAdmin / Manager / Leader / Memberです。" }, { status: 400 });
     }
     if (hasDepartmentName && !departmentName) {
       return NextResponse.json({ error: "部門を選択してください。" }, { status: 400 });
     }
-    if (!hasRole && !hasDepartmentName && !hasPosition) {
+    if (hasEmploymentStatus && !employmentStatus) {
+      return NextResponse.json({ error: "状態を選択してください。" }, { status: 400 });
+    }
+    if (!hasRole && !hasDepartmentName && !hasPosition && !hasIsActive && !hasEmploymentStatus) {
       return NextResponse.json({ error: "更新内容を指定してください。" }, { status: 400 });
     }
 
@@ -83,8 +90,8 @@ export async function POST(request: NextRequest) {
       .eq("id", requesterData.user.id)
       .single();
 
-    if (requesterProfileError || requesterProfile?.role !== "owner") {
-      return NextResponse.json({ error: "ユーザー情報の変更はOwnerのみ実行できます。" }, { status: 403 });
+    if (requesterProfileError || !["owner", "admin"].includes(requesterProfile?.role ?? "")) {
+      return NextResponse.json({ error: "ユーザー情報の変更はOwner/Adminのみ実行できます。" }, { status: 403 });
     }
 
     const { data: targetProfile, error: targetProfileError } = await profilesSelect
@@ -116,10 +123,18 @@ export async function POST(request: NextRequest) {
       }
       department = departmentResult.data;
       updatePayload.department_id = department.id;
+      updatePayload.organization = departmentName;
+      updatePayload.department = departmentName;
     }
 
     if (hasPosition) {
       updatePayload.position = position;
+    }
+    if (hasIsActive) {
+      updatePayload.is_active = isActive;
+    }
+    if (hasEmploymentStatus) {
+      updatePayload.employment_status = employmentStatus;
     }
 
     const profilesTable = serviceClient.from("profiles") as unknown as ProfileUpdateTable;
@@ -131,7 +146,8 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (updateError && hasPosition && isMissingPositionColumnError(updateError)) {
-      const { position: _position, ...payloadWithoutPosition } = updatePayload;
+      const payloadWithoutPosition = { ...updatePayload };
+      delete payloadWithoutPosition.position;
       if (Object.keys(payloadWithoutPosition).length === 0) {
         return NextResponse.json({
           error: "役職の保存にはSupabaseで add_profile_position_20260606.sql を実行してください。",
@@ -171,9 +187,13 @@ export async function POST(request: NextRequest) {
         email: profile.email,
         departmentId: profile.department_id,
         departmentName: responseDepartmentName,
+        organization: profile.organization ?? responseDepartmentName,
         position: positionSaved ? profile.position : targetProfile.position,
         role: profile.role,
         isActive: profile.is_active,
+        employmentStatus: profile.employment_status ?? (profile.is_active ? "在籍中" : "停止中"),
+        joinedAt: profile.joined_at,
+        avatarUrl: profile.avatar_url,
       },
     });
   } catch (error) {

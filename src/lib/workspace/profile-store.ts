@@ -20,10 +20,14 @@ export type TeamProfileEntry = {
   email: string;
   departmentId?: string;
   departmentName: string;
+  organization: string;
   position: string;
   role: AppRole;
   roleLabel: string;
   isActive: boolean;
+  employmentStatus: string;
+  joinedAt?: string;
+  avatarUrl?: string;
   source: "demo" | "supabase";
 };
 
@@ -40,12 +44,15 @@ export type TeamProfileUpdatePayload = {
   role?: AppRole;
   departmentName?: string;
   position?: string;
+  isActive?: boolean;
+  employmentStatus?: string;
 };
 
 export const OPERATIONAL_ROLE_OPTIONS: Array<{ value: AppRole; label: string; description: string }> = [
   { value: "owner", label: "Owner", description: "全権限・最終承認" },
   { value: "admin", label: "Admin", description: "設定・ユーザー管理" },
   { value: "department_manager", label: "Manager", description: "部門/チーム管理" },
+  { value: "leader", label: "Leader", description: "拠点・現場リード" },
   { value: "member", label: "Member", description: "作業担当" },
 ];
 
@@ -62,10 +69,12 @@ export function demoUsersToProfiles(): TeamProfileEntry[] {
       displayName: user.name,
       email: user.email,
       departmentName: user.department,
+      organization: user.department,
       position: user.position,
       role,
       roleLabel: getRoleLabel(role),
       isActive: true,
+      employmentStatus: "在籍中",
       source: "demo",
     };
   });
@@ -109,6 +118,13 @@ export async function updateProfileDepartmentAndPositionInSupabase(
   return updateTeamProfileInSupabase({ profileId, ...payload });
 }
 
+export async function updateProfileEmploymentStatusInSupabase(
+  profileId: string,
+  payload: Pick<TeamProfileUpdatePayload, "isActive" | "employmentStatus">,
+) {
+  return updateTeamProfileInSupabase({ profileId, ...payload });
+}
+
 export async function updateTeamProfileInSupabase(payload: TeamProfileUpdatePayload) {
   if (!canUseSupabaseBrowserClient() || !isSupabaseUuid(payload.profileId)) {
     return { source: "demo" as const, positionSaved: true };
@@ -148,10 +164,14 @@ export async function updateTeamProfileInSupabase(payload: TeamProfileUpdatePayl
         email: updatedProfile.email ?? "",
         departmentId: updatedProfile.departmentId,
         departmentName: updatedProfile.departmentName ?? payload.departmentName ?? "未設定",
+        organization: updatedProfile.organization ?? updatedProfile.departmentName ?? payload.departmentName ?? "未設定",
         position: updatedProfile.position ?? payload.position ?? "未設定",
         role,
         roleLabel: getRoleLabel(role),
         isActive: updatedProfile.isActive ?? true,
+        employmentStatus: updatedProfile.employmentStatus ?? "在籍中",
+        joinedAt: updatedProfile.joinedAt,
+        avatarUrl: updatedProfile.avatarUrl,
         source: "supabase" as const,
       } satisfies TeamProfileEntry
       : undefined,
@@ -197,10 +217,14 @@ export async function inviteTeamUser(payload: TeamUserInvitePayload) {
     email: invitedProfile.email,
     departmentId: invitedProfile.departmentId,
     departmentName: invitedProfile.departmentName ?? payload.departmentName,
+    organization: invitedProfile.organization ?? invitedProfile.departmentName ?? payload.departmentName,
     position: invitedProfile.position ?? payload.position ?? "未設定",
     role,
     roleLabel: getRoleLabel(role),
     isActive: invitedProfile.isActive ?? true,
+    employmentStatus: invitedProfile.employmentStatus ?? "在籍中",
+    joinedAt: invitedProfile.joinedAt,
+    avatarUrl: invitedProfile.avatarUrl,
     source: "supabase" as const,
   } satisfies TeamProfileEntry;
 }
@@ -219,10 +243,14 @@ function profileRowToEntry(profile: ProfileRow, departmentsById: Map<string, Dep
     email: profile.email ?? fallback?.email ?? "",
     departmentId: profile.department_id ?? undefined,
     departmentName: department?.name ?? fallback?.department ?? "未設定",
+    organization: profile.organization ?? department?.name ?? fallback?.department ?? "未設定",
     position: position ?? fallback?.position ?? "未設定",
     role,
     roleLabel: getRoleLabel(role),
     isActive: profile.is_active,
+    employmentStatus: profile.employment_status ?? (profile.is_active ? "在籍中" : "停止中"),
+    joinedAt: profile.joined_at ?? undefined,
+    avatarUrl: profile.avatar_url ?? undefined,
     source: "supabase",
   };
 }
@@ -232,5 +260,6 @@ function mapDisplayRoleToOperationalRole(role: string): AppRole {
   if (normalizedRole === "owner") return "owner";
   if (normalizedRole === "admin") return "admin";
   if (normalizedRole === "manager" || normalizedRole === "approver") return "department_manager";
+  if (normalizedRole === "leader") return "leader";
   return "member";
 }

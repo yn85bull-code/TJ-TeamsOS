@@ -36,6 +36,7 @@ import { createIssueRecord, createTaskRecord, loadCreatedRecordsFromSupabase, re
 import { DEPARTMENTS_STORAGE_KEY, DEFAULT_DEPARTMENTS, normalizeDepartmentList } from "@/lib/workspace/department-store";
 import { createMyTodoRecord, loadMyTodos, softDeleteMyTodoRecord, updateMyTodoRecord, type MyTodoEntry } from "@/lib/workspace/my-todo-store";
 import { createNotificationRecord, loadNotificationsFromSupabase, markNotificationReadRecord, markNotificationsReadRecord, type AppNotificationEntry } from "@/lib/workspace/notification-store";
+import { createTeamsTodoRecord, loadTeamsTodos, softDeleteTeamsTodoRecord, updateTeamsTodoRecord, type TeamsTodoEntry } from "@/lib/workspace/teams-todo-store";
 import { AppRole } from "@/types/database";
 import { CheckCircle2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -69,6 +70,7 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
   const [createdTasks, setCreatedTasks] = useState<CreatedTaskEntry[]>([]);
   const [createdIssues, setCreatedIssues] = useState<CreatedIssueEntry[]>([]);
   const [myTodos, setMyTodos] = useState<MyTodoEntry[]>([]);
+  const [teamsTodos, setTeamsTodos] = useState<TeamsTodoEntry[]>([]);
   const [preferredTaskView, setPreferredTaskView] = useState<"mine" | "team" | "approval" | "sendback" | undefined>();
   const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
   const [headerNotifications, setHeaderNotifications] = useState<AppNotificationEntry[]>([]);
@@ -149,6 +151,10 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
     void loadMyTodos(currentUser.id, currentUser.name).then((records) => {
       if (cancelled) return;
       setMyTodos(records.todos);
+    });
+    void loadTeamsTodos(currentUser.department, currentUser.id, currentUser.name).then((records) => {
+      if (cancelled) return;
+      setTeamsTodos(records.todos);
     });
 
     return () => {
@@ -534,6 +540,18 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
     setMyTodos((items) => items.map((item) => isSameMyTodo(item, todo) ? todo : item));
     void softDeleteMyTodoRecord(todo, currentUser?.id);
   };
+  const createTeamsTodo = async (todo: TeamsTodoEntry) => {
+    const saved = await createTeamsTodoRecord(todo, currentUser?.id);
+    setTeamsTodos((items) => [saved.entry, ...items.filter((item) => !isSameTeamsTodo(item, saved.entry))]);
+  };
+  const updateTeamsTodo = (todo: TeamsTodoEntry) => {
+    setTeamsTodos((items) => items.map((item) => isSameTeamsTodo(item, todo) ? todo : item));
+    void updateTeamsTodoRecord(todo, currentUser?.id);
+  };
+  const deleteTeamsTodo = (todo: TeamsTodoEntry) => {
+    setTeamsTodos((items) => items.map((item) => isSameTeamsTodo(item, todo) ? todo : item));
+    void softDeleteTeamsTodoRecord(todo, currentUser?.id);
+  };
   const completeCreate = async (payload: CreateDrawerPayload) => {
     const issue: CreatedIssueEntry = {
       id: `ISS-NEW-${Date.now()}`,
@@ -582,6 +600,7 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
     setCreateOpen(false);
     setCreateNotice(null);
     setMyTodos([]);
+    setTeamsTodos([]);
   };
 
   if (!currentUser) {
@@ -616,6 +635,7 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
             createdTasks={createdTasks}
             createdIssues={createdIssues}
             myTodos={myTodos}
+            teamsTodos={teamsTodos}
             preferredTaskView={preferredTaskView}
             requesterName={currentUser.name}
             currentUserName={currentUser.name}
@@ -635,6 +655,9 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
             onCreateMyTodo={createMyTodo}
             onUpdateMyTodo={updateMyTodo}
             onDeleteMyTodo={deleteMyTodo}
+            onCreateTeamsTodo={createTeamsTodo}
+            onUpdateTeamsTodo={updateTeamsTodo}
+            onDeleteTeamsTodo={deleteTeamsTodo}
             onResolveApproval={resolveApproval}
             onReviewApproval={reviewApproval}
             onSendBackTask={sendBackTask}
@@ -690,6 +713,7 @@ function ActivePage({
   createdTasks,
   createdIssues,
   myTodos,
+  teamsTodos,
   preferredTaskView,
   requesterName,
   currentUserName,
@@ -709,6 +733,9 @@ function ActivePage({
   onCreateMyTodo,
   onUpdateMyTodo,
   onDeleteMyTodo,
+  onCreateTeamsTodo,
+  onUpdateTeamsTodo,
+  onDeleteTeamsTodo,
   onResolveApproval,
   onReviewApproval,
   onSendBackTask,
@@ -729,6 +756,7 @@ function ActivePage({
   createdTasks: CreatedTaskEntry[];
   createdIssues: CreatedIssueEntry[];
   myTodos: MyTodoEntry[];
+  teamsTodos: TeamsTodoEntry[];
   preferredTaskView?: "mine" | "team" | "approval" | "sendback";
   requesterName: string;
   currentUserName: string;
@@ -748,6 +776,9 @@ function ActivePage({
   onCreateMyTodo: (todo: MyTodoEntry) => void;
   onUpdateMyTodo: (todo: MyTodoEntry) => void;
   onDeleteMyTodo: (todo: MyTodoEntry) => void;
+  onCreateTeamsTodo: (todo: TeamsTodoEntry) => void;
+  onUpdateTeamsTodo: (todo: TeamsTodoEntry) => void;
+  onDeleteTeamsTodo: (todo: TeamsTodoEntry) => void;
   onResolveApproval: (approval: ApprovalRequestEntry, mode: "approve" | "sendback", comment: string) => void;
   onReviewApproval: (approval: ApprovalRequestEntry, comment: string) => void;
   onSendBackTask: (task: SendbackTaskEntry) => void;
@@ -762,17 +793,17 @@ function ActivePage({
 }) {
   switch (activeKey) {
     case "dashboard":
-      return <DashboardPage onNavigate={onNavigate} createdTasks={createdTasks} createdIssues={createdIssues} myTodos={myTodos} departmentOptions={departments} appRole={appRole} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} />;
+      return <DashboardPage onNavigate={onNavigate} createdTasks={createdTasks} createdIssues={createdIssues} myTodos={myTodos} teamsTodos={teamsTodos} departmentOptions={departments} appRole={appRole} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} />;
     case "issues":
       return <IssuesPage onNavigate={onNavigate} onAddLog={onAddLog} onCreateTask={onCreateTask} onUpdateIssue={onUpdateIssue} onDeleteIssue={onDeleteIssue} onRestoreIssue={onRestoreIssue} createdIssues={createdIssues} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} appRole={appRole} departmentOptions={departments} />;
     case "tasks":
       return <TasksPage appRole={appRole} requesterName={requesterName} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} sendbackTasks={sendbackTasks} createdTasks={createdTasks} preferredView={preferredTaskView} approvalReviewerOptions={approvalReviewerOptions} finalApprover={finalApprover} onCreateApproval={onCreateApproval} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} onRestoreTask={onRestoreTask} />;
     case "my_todo":
-      return <MyTodoPage myTodos={myTodos} currentUserName={currentUserName} currentUserId={currentUserId} appRole={appRole} onCreateMyTodo={onCreateMyTodo} onUpdateMyTodo={onUpdateMyTodo} onDeleteMyTodo={onDeleteMyTodo} />;
+      return <MyTodoPage myTodos={myTodos} teamsTodos={teamsTodos} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} appRole={appRole} onCreateMyTodo={onCreateMyTodo} onUpdateMyTodo={onUpdateMyTodo} onDeleteMyTodo={onDeleteMyTodo} onCreateTeamsTodo={onCreateTeamsTodo} onUpdateTeamsTodo={onUpdateTeamsTodo} onDeleteTeamsTodo={onDeleteTeamsTodo} />;
     case "approvals":
       return <ApprovalsPage onNavigate={onNavigate} approvalRequests={approvalRequests} resolvedApprovalIds={resolvedApprovalIds} onResolveApproval={onResolveApproval} onReviewApproval={onReviewApproval} onSendBackTask={onSendBackTask} approvalHistory={approvalHistory} onRecordApproval={onRecordApproval} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} appRole={appRole} />;
     case "teams":
-      return <TeamsPage />;
+      return <TeamsPage appRole={appRole} currentUserName={currentUserName} currentUserDepartment={currentUserDepartment} />;
     case "tauros_ai":
       return <TaurosAiPage appRole={appRole} currentUserDepartment={currentUserDepartment} currentUserName={currentUserName} />;
     case "ai":
@@ -784,7 +815,7 @@ function ActivePage({
     case "settings":
       return <SettingsPage departments={departments} onAddDepartment={onAddDepartment} onDeleteDepartment={onDeleteDepartment} currentUserId={currentUserId} currentUserName={currentUserName} currentAuthSource={currentAuthSource} appRole={appRole} />;
     default:
-      return <DashboardPage onNavigate={onNavigate} createdTasks={createdTasks} createdIssues={createdIssues} myTodos={myTodos} departmentOptions={departments} appRole={appRole} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} />;
+      return <DashboardPage onNavigate={onNavigate} createdTasks={createdTasks} createdIssues={createdIssues} myTodos={myTodos} teamsTodos={teamsTodos} departmentOptions={departments} appRole={appRole} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} />;
   }
 }
 
@@ -1059,6 +1090,10 @@ function isSameRecord(left: { id?: string; supabaseId?: string }, right: { id?: 
 }
 
 function isSameMyTodo(left: MyTodoEntry, right: MyTodoEntry) {
+  return isSameRecord(left, right);
+}
+
+function isSameTeamsTodo(left: TeamsTodoEntry, right: TeamsTodoEntry) {
   return isSameRecord(left, right);
 }
 

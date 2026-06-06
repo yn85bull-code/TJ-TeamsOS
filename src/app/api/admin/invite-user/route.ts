@@ -30,7 +30,7 @@ type ProfileUpsertTable = {
   };
 };
 
-const allowedInviteRoles: AppRole[] = ["admin", "department_manager", "member"];
+const allowedInviteRoles: AppRole[] = ["admin", "department_manager", "leader", "member"];
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,11 +38,11 @@ export async function POST(request: NextRequest) {
     const displayName = normalizeText(payload.displayName);
     const email = normalizeEmail(payload.email);
     const departmentName = normalizeText(payload.departmentName);
-    const position = normalizeText(payload.position) || "未設定";
+    const position = normalizeText(payload.position);
     const role = normalizeInviteRole(payload.role);
 
-    if (!displayName || !email || !departmentName || !role) {
-      return NextResponse.json({ error: "名前、メール、部門、権限を確認してください。" }, { status: 400 });
+    if (!displayName || !email || !departmentName || !position || !role) {
+      return NextResponse.json({ error: "名前、メール、所属、役職、権限を確認してください。" }, { status: 400 });
     }
 
     const authHeader = request.headers.get("authorization");
@@ -70,8 +70,8 @@ export async function POST(request: NextRequest) {
       .eq("id", requesterData.user.id)
       .single();
 
-    if (profileError || requesterProfile?.role !== "owner") {
-      return NextResponse.json({ error: "ユーザー招待はOwnerのみ実行できます。" }, { status: 403 });
+    if (profileError || !["owner", "admin"].includes(requesterProfile?.role ?? "")) {
+      return NextResponse.json({ error: "ユーザー招待はOwner/Adminのみ実行できます。" }, { status: 403 });
     }
 
     const invited = await serviceClient.auth.admin.inviteUserByEmail(email, {
@@ -104,6 +104,9 @@ export async function POST(request: NextRequest) {
       display_name: displayName,
       email,
       position,
+      organization: departmentName,
+      department: departmentName,
+      employment_status: "在籍中",
       role,
       department_id: department.id,
       is_active: true,
@@ -114,7 +117,8 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (upsertError && isMissingPositionColumnError(upsertError)) {
-      const { position: _position, ...profilePayloadWithoutPosition } = profilePayload;
+      const profilePayloadWithoutPosition = { ...profilePayload };
+      delete profilePayloadWithoutPosition.position;
       const retryResult = await profilesTable
         .upsert(profilePayloadWithoutPosition, { onConflict: "id" })
         .select("*")
@@ -134,9 +138,13 @@ export async function POST(request: NextRequest) {
         email: profile.email,
         departmentId: profile.department_id,
         departmentName: department.name,
+        organization: profile.organization ?? department.name,
         position: profile.position ?? position,
         role: profile.role,
         isActive: profile.is_active,
+        employmentStatus: profile.employment_status ?? "在籍中",
+        joinedAt: profile.joined_at,
+        avatarUrl: profile.avatar_url,
       },
     });
   } catch (error) {

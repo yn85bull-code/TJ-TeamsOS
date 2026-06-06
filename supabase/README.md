@@ -59,7 +59,21 @@ supabase/add_my_todos_20260606.sql
 
 MyToDoは通常タスクや承認フローとは別物です。RLSは `auth.uid() = user_id` に固定しているため、Owner / Admin / Managerでも他ユーザーのMyToDoは取得・更新できません。
 
-## 6. ローカル確認
+## 6. Organization / TeamsToDo
+
+Organization用のprofiles追加カラム、Leader権限、所属内TeamsToDoの `teams_todos` テーブルを追加します。
+
+```text
+supabase/add_teams_todos_and_organization_20260606.sql
+```
+
+- TeamsToDoはProject/tasks/approvalsとは別物です
+- 取得範囲はログインユーザーの `organization` / `department` に限定します
+- 登録・編集・削除はOwner / Admin / Manager / Leaderに限定します
+- Memberは所属TeamsToDoの閲覧のみです
+- 停止中/退職ユーザーはアプリ側ログイン時にもブロックします
+
+## 7. ローカル確認
 
 開発サーバー:
 
@@ -73,13 +87,13 @@ npm run dev
 npm run start -- --hostname 0.0.0.0 --port 3000
 ```
 
-## 7. TeamOS内からユーザー招待
+## 8. TeamOS内からユーザー招待
 
 `.env.local` に `SUPABASE_SERVICE_ROLE_KEY` を設定して開発サーバーを再起動します。
 
-Ownerで本ログインしたあと、`Settings > ユーザー設定 > ユーザー招待` から招待メールを送れます。
+Owner/Adminで本ログインしたあと、`Settings > ユーザー設定 > ユーザー招待` から招待メールを送れます。
 
 - Ownerは楢原悠太郎さんのみ
-- 招待時に選べる権限はAdmin / Manager / Member
-- 招待後、`public.profiles` に氏名、メール、部門、役職、権限が登録されます
+- 招待時に選べる権限はAdmin / Manager / Leader / Member
+- 招待後、`public.profiles` に氏名、メール、所属、役職、権限、在籍状態が登録されます
 - デモログインでは送信せず、フォーム確認のみできます

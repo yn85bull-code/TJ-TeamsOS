@@ -16,6 +16,7 @@ import {
 } from "@/lib/dashboard-demo-data";
 import { canAccessNavItem, normalizeAppRole } from "@/lib/domain/permissions";
 import type { MyTodoEntry, MyTodoPriority, MyTodoStatus } from "@/lib/workspace/my-todo-store";
+import type { TeamsTodoEntry } from "@/lib/workspace/teams-todo-store";
 import { DEFAULT_DEPARTMENTS, normalizeDepartmentList } from "@/lib/workspace/department-store";
 import { AppRole } from "@/types/database";
 import {
@@ -40,6 +41,7 @@ type DashboardPageProps = {
   createdTasks?: TaskSummary[];
   createdIssues?: Array<{ owner: string }>;
   myTodos?: MyTodoEntry[];
+  teamsTodos?: TeamsTodoEntry[];
   departmentOptions?: string[];
   appRole?: AppRole;
   currentUserName?: string;
@@ -47,7 +49,7 @@ type DashboardPageProps = {
   currentUserDepartment?: string;
 };
 
-export function DashboardPage({ onNavigate, createdTasks = [], createdIssues = [], myTodos = [], departmentOptions = DEFAULT_DEPARTMENTS, appRole = "member", currentUserName = "", currentUserId, currentUserDepartment }: DashboardPageProps) {
+export function DashboardPage({ onNavigate, createdTasks = [], createdIssues = [], myTodos = [], teamsTodos = [], departmentOptions = DEFAULT_DEPARTMENTS, appRole = "member", currentUserName = "", currentUserId, currentUserDepartment }: DashboardPageProps) {
   const todayLabel = useMemo(() => formatTodayLabel(), []);
   const normalizedRole = normalizeAppRole(appRole);
   const canViewAll = normalizedRole === "owner" || normalizedRole === "admin";
@@ -76,7 +78,7 @@ export function DashboardPage({ onNavigate, createdTasks = [], createdIssues = [
       <section className={`grid gap-5 ${canViewTeamSummary ? "xl:grid-cols-[1.05fr_1.35fr_0.75fr]" : "xl:grid-cols-[1fr_0.85fr]"}`}>
         <MyTasksPanel onNavigate={onNavigate} createdTasks={visibleCreatedTasks} currentUserName={currentUserName} appRole={appRole} />
         {canViewTeamSummary ? <TeamKanban onNavigate={onNavigate} /> : null}
-        <MyTodoDashboardPanel onNavigate={onNavigate} myTodos={myTodos} />
+        <MyTodoDashboardPanel onNavigate={onNavigate} myTodos={myTodos} teamsTodos={teamsTodos} />
       </section>
 
       {canViewTeamSummary ? (
@@ -359,21 +361,23 @@ export function TaskCard({ task }: { task: TaskSummary }) {
   );
 }
 
-export function MyTodoDashboardPanel({ onNavigate, myTodos = [] }: DashboardPageProps) {
+export function MyTodoDashboardPanel({ onNavigate, myTodos = [], teamsTodos = [] }: DashboardPageProps) {
   const dashboardTodos = useMemo(() => getDashboardMyTodos(myTodos), [myTodos]);
+  const dashboardTeamsTodos = useMemo(() => getDashboardTeamsTodos(teamsTodos), [teamsTodos]);
 
   return (
     <PanelCard className="p-5">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="font-bold">MyToDo</h3>
-          <p className="mt-1 text-xs font-semibold text-slate-500">未完了・期限近め・高優先度の個人ToDo</p>
+          <h3 className="font-bold">ToDo</h3>
+          <p className="mt-1 text-xs font-semibold text-slate-500">個人ToDo / 所属ToDoの確認</p>
         </div>
         <button className="text-xs font-bold text-slate-700" type="button" onClick={() => onNavigate("my_todo")}>
           管理する
         </button>
       </div>
       <div className="mt-4 grid gap-2">
+        <p className="text-[11px] font-black uppercase tracking-wide text-slate-400">MyToDo</p>
         {dashboardTodos.map((todo) => (
           <button key={todo.id} className="grid gap-2 rounded-lg border border-slate-100 bg-slate-50 p-3 text-left transition hover:border-[#D6001C] hover:bg-white" type="button" onClick={() => onNavigate("my_todo")}>
             <div className="flex items-start justify-between gap-3">
@@ -387,9 +391,37 @@ export function MyTodoDashboardPanel({ onNavigate, myTodos = [] }: DashboardPage
           </button>
         ))}
         {dashboardTodos.length === 0 ? <p className="rounded-lg bg-slate-50 p-4 text-sm font-semibold text-slate-500">未完了のMyToDoはありません。</p> : null}
+        <p className="mt-3 text-[11px] font-black uppercase tracking-wide text-slate-400">TeamsToDo</p>
+        {dashboardTeamsTodos.map((todo) => (
+          <button key={todo.id} className="grid gap-2 rounded-lg border border-slate-100 bg-slate-50 p-3 text-left transition hover:border-[#D6001C] hover:bg-white" type="button" onClick={() => onNavigate("my_todo")}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="line-clamp-2 text-sm font-bold text-slate-900">{todo.title}</p>
+                <p className="mt-1 text-[11px] font-bold text-slate-500">{todo.targetOrganization}</p>
+              </div>
+              <MyTodoPriorityBadge priority={todo.priority} />
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
+              <span>{formatDashboardMyTodoDueDate(todo.dueDate)}</span>
+              <MyTodoStatusBadge status={todo.status} />
+            </div>
+          </button>
+        ))}
+        {dashboardTeamsTodos.length === 0 ? <p className="rounded-lg bg-slate-50 p-4 text-sm font-semibold text-slate-500">未完了のTeamsToDoはありません。</p> : null}
       </div>
     </PanelCard>
   );
+}
+
+function getDashboardTeamsTodos(teamsTodos: TeamsTodoEntry[]) {
+  return teamsTodos
+    .filter((todo) => !todo.deletedAt && todo.status !== "done")
+    .sort((left, right) => {
+      const priorityDiff = getMyTodoPriorityRank(right.priority) - getMyTodoPriorityRank(left.priority);
+      if (priorityDiff !== 0) return priorityDiff;
+      return getMyTodoDueTime(left.dueDate) - getMyTodoDueTime(right.dueDate);
+    })
+    .slice(0, 6);
 }
 
 function getDashboardMyTodos(myTodos: MyTodoEntry[]) {

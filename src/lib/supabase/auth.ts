@@ -82,6 +82,10 @@ async function loadAuthUserProfile(userId: string): Promise<AuthUser> {
 
   if (profileError) throw profileError;
   const profileRow = profile as ProfileRow;
+  if (!profileRow.is_active || profileRow.employment_status === "停止中" || profileRow.employment_status === "退職") {
+    await supabase.auth.signOut();
+    throw new Error("このアカウントは停止中です。Owner/Adminへ確認してください。");
+  }
   const authUser = profileToAuthUser(profileRow);
 
   if (!profileRow.department_id) {
