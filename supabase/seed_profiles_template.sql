@@ -20,27 +20,34 @@ insert into public.profiles (id, display_name, email, role, department_id)
 values
   (
     '00000000-0000-0000-0000-000000000001',
-    '山田 太郎',
-    'yamada@example.com',
+    '楢原悠太郎',
+    'yn85bull@gmail.com',
     'owner',
     (select id from public.departments where name = '営業本部')
   ),
   (
     '00000000-0000-0000-0000-000000000002',
+    '山田 太郎',
+    'yamada@example.com',
+    'admin',
+    (select id from public.departments where name = '営業本部')
+  ),
+  (
+    '00000000-0000-0000-0000-000000000003',
     '佐藤 一郎',
     'sato@example.com',
     'department_manager',
     (select id from public.departments where name = '買取営業')
   ),
   (
-    '00000000-0000-0000-0000-000000000003',
+    '00000000-0000-0000-0000-000000000004',
     '鈴木 太郎',
     'suzuki@example.com',
     'admin',
     (select id from public.departments where name = '情シス')
   ),
   (
-    '00000000-0000-0000-0000-000000000004',
+    '00000000-0000-0000-0000-000000000005',
     '田中 美咲',
     'tanaka@example.com',
     'member',

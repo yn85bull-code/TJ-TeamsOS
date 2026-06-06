@@ -45,8 +45,9 @@ const CREATED_TASKS_STORAGE_KEY = "tauros-teamos.created-tasks.v1";
 const CREATED_ISSUES_STORAGE_KEY = "tauros-teamos.created-issues.v1";
 const ACTIVITY_LOGS_STORAGE_KEY = "tauros-teamos.activity-logs.v1";
 const NOTIFICATIONS_STORAGE_KEY = "tauros-teamos.notifications.v1";
-const SOLE_OWNER_USER_ID = "user-owner-yamada";
-const SOLE_OWNER_EMAIL = "yamada@example.com";
+const SOLE_OWNER_USER_ID = "e8925ab3-25c7-4ecf-8187-0a13359f6832";
+const SOLE_OWNER_EMAIL = "yn85bull@gmail.com";
+const SOLE_OWNER_NAME = "楢原悠太郎";
 
 type NotificationRecipient = {
   id: string;
@@ -756,8 +757,7 @@ function getSoleOwnerApprover(currentUser?: AuthUser | null): ApprovalReviewerOp
     return { id: currentUser.id, name: currentUser.name, role: "Owner" };
   }
 
-  const owner = demoUsers.find((user) => user.id === SOLE_OWNER_USER_ID) ?? demoUsers[0];
-  return { id: owner.id, name: owner.name, role: "Owner" };
+  return { id: SOLE_OWNER_USER_ID, name: SOLE_OWNER_NAME, role: "Owner" };
 }
 
 function getApprovalReviewerOptions(): ApprovalReviewerOption[] {

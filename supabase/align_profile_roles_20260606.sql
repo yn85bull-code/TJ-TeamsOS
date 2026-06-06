@@ -21,15 +21,22 @@ drop trigger if exists enforce_profile_role_update_scope on public.profiles;
 update public.profiles
 set role = 'admin'
 where role = 'owner'
-  and email <> 'yamada@example.com';
+  and email <> 'yn85bull@gmail.com';
 
 insert into public.profiles (id, display_name, email, role, department_id)
 values
   (
+    'e8925ab3-25c7-4ecf-8187-0a13359f6832',
+    '楢原悠太郎',
+    'yn85bull@gmail.com',
+    'owner',
+    (select id from public.departments where name = '営業本部')
+  ),
+  (
     '3c3c1893-eb7a-4442-b189-d5f430fe909f',
     '山田 太郎',
     'yamada@example.com',
-    'owner',
+    'admin',
     (select id from public.departments where name = '営業本部')
   ),
   (
@@ -62,7 +69,8 @@ on conflict (id) do update set
 
 update public.profiles
 set role = case
-  when email = 'yamada@example.com' then 'owner'::app_role
+  when email = 'yn85bull@gmail.com' then 'owner'::app_role
+  when email = 'yamada@example.com' then 'admin'::app_role
   when email = 'suzuki@example.com' then 'admin'::app_role
   when email = 'sato@example.com' then 'department_manager'::app_role
   when email = 'tanaka@example.com' then 'member'::app_role
@@ -71,7 +79,7 @@ set role = case
   else role
 end,
 updated_at = now()
-where email in ('yamada@example.com', 'suzuki@example.com', 'sato@example.com', 'tanaka@example.com')
+where email in ('yn85bull@gmail.com', 'yamada@example.com', 'suzuki@example.com', 'sato@example.com', 'tanaka@example.com')
    or role in ('executive', 'team_manager', 'viewer');
 
 create or replace function public.is_admin()
@@ -118,5 +126,5 @@ select
   email,
   role
 from public.profiles
-where email in ('yamada@example.com', 'suzuki@example.com', 'sato@example.com', 'tanaka@example.com')
+where email in ('yn85bull@gmail.com', 'yamada@example.com', 'suzuki@example.com', 'sato@example.com', 'tanaka@example.com')
 order by role, display_name;

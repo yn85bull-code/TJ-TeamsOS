@@ -2047,7 +2047,8 @@ function ApprovalCommentPanel({
 }
 
 const teamMembers = [
-  { department: "営業部", position: "本部長", name: "山田 太郎", permission: "Owner" },
+  { department: "営業部", position: "Owner", name: "楢原悠太郎", permission: "Owner" },
+  { department: "営業部", position: "本部長", name: "山田 太郎", permission: "Admin" },
   { department: "営業部", position: "課長", name: "山田 花子", permission: "Manager" },
   { department: "買取部", position: "主任", name: "佐藤 一郎", permission: "Manager" },
   { department: "販売部", position: "リーダー", name: "鈴木 太郎", permission: "Admin" },
@@ -2623,7 +2624,7 @@ export function SettingsPage({
                 <div>
                   <h4 className="text-sm font-bold">ユーザー権限一覧</h4>
                   <p className="mt-1 text-xs leading-5 text-slate-500">
-                    Ownerは山田太郎さんのみ固定です。Admin/Manager/MemberはOwnerが変更できます。
+                    Ownerは楢原悠太郎さんのみ固定です。Admin/Manager/MemberはOwnerが変更できます。
                   </p>
                 </div>
                 <span className={`rounded-full px-3 py-1 text-xs font-bold ${profileStatus === "error" ? "bg-red-50 text-red-700" : profileStatus === "loading" ? "bg-blue-50 text-blue-700" : "bg-emerald-50 text-emerald-700"}`}>
