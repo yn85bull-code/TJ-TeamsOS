@@ -4189,7 +4189,7 @@ export function MyTodoPage({
       </div>
 
       {activeTodoTab === "mine" ? (
-      <section className="grid gap-5 xl:grid-cols-[420px_minmax(0,1fr)]">
+      <section className="grid gap-5">
         <PanelCard className="p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -4207,20 +4207,20 @@ export function MyTodoPage({
               メモ
               <textarea className="min-h-28 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={draft.memo} onChange={(event) => setDraft({ ...draft, memo: event.currentTarget.value })} placeholder="補足や忘れたくない内容" />
             </label>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 lg:grid-cols-3">
               <label className="grid gap-2 text-sm font-bold text-slate-700">
                 期限
-                <input className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" type="date" value={draft.dueDate} onChange={(event) => setDraft({ ...draft, dueDate: event.currentTarget.value })} />
+                <input className="w-full min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" type="date" value={draft.dueDate} onChange={(event) => setDraft({ ...draft, dueDate: event.currentTarget.value })} />
               </label>
               <label className="grid gap-2 text-sm font-bold text-slate-700">
                 優先度
-                <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: event.currentTarget.value as MyTodoPriority })}>
+                <select className="w-full min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: event.currentTarget.value as MyTodoPriority })}>
                   {myTodoPriorityOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </label>
               <label className="grid gap-2 text-sm font-bold text-slate-700">
                 ステータス
-                <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.currentTarget.value as MyTodoStatus })}>
+                <select className="w-full min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.currentTarget.value as MyTodoStatus })}>
                   {myTodoStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </label>
@@ -4254,20 +4254,20 @@ export function MyTodoPage({
                   メモ
                   <textarea className="min-h-24 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={editDraft.memo} onChange={(event) => setEditDraft({ ...editDraft, memo: event.currentTarget.value })} />
                 </label>
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid gap-3 lg:grid-cols-3">
                   <label className="grid gap-2 text-sm font-bold text-slate-700">
                     期限
-                    <input className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" type="date" value={editDraft.dueDate} onChange={(event) => setEditDraft({ ...editDraft, dueDate: event.currentTarget.value })} />
+                    <input className="w-full min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" type="date" value={editDraft.dueDate} onChange={(event) => setEditDraft({ ...editDraft, dueDate: event.currentTarget.value })} />
                   </label>
                   <label className="grid gap-2 text-sm font-bold text-slate-700">
                     優先度
-                    <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={editDraft.priority} onChange={(event) => setEditDraft({ ...editDraft, priority: event.currentTarget.value as MyTodoPriority })}>
+                    <select className="w-full min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={editDraft.priority} onChange={(event) => setEditDraft({ ...editDraft, priority: event.currentTarget.value as MyTodoPriority })}>
                       {myTodoPriorityOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                     </select>
                   </label>
                   <label className="grid gap-2 text-sm font-bold text-slate-700">
                     ステータス
-                    <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={editDraft.status} onChange={(event) => setEditDraft({ ...editDraft, status: event.currentTarget.value as MyTodoStatus })}>
+                    <select className="w-full min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={editDraft.status} onChange={(event) => setEditDraft({ ...editDraft, status: event.currentTarget.value as MyTodoStatus })}>
                       {myTodoStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                     </select>
                   </label>
@@ -4517,7 +4517,7 @@ function TeamsTodoSection({
   };
 
   return (
-    <section className="grid gap-5 xl:grid-cols-[420px_minmax(0,1fr)]">
+    <section className="grid gap-5">
       <PanelCard className="p-5">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -4544,14 +4544,14 @@ function TeamsTodoSection({
             メモ
             <textarea className="min-h-28 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C] disabled:bg-slate-50" value={draft.memo} disabled={!canManageTeamsTodo} onChange={(event) => setDraft({ ...draft, memo: event.currentTarget.value })} placeholder="Project化する前の共有メモ" />
           </label>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-4">
             <label className="grid gap-2 text-sm font-bold text-slate-700">
               期限
-              <input className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C] disabled:bg-slate-50" type="date" value={draft.dueDate} disabled={!canManageTeamsTodo} onChange={(event) => setDraft({ ...draft, dueDate: event.currentTarget.value })} />
+              <input className="w-full min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C] disabled:bg-slate-50" type="date" value={draft.dueDate} disabled={!canManageTeamsTodo} onChange={(event) => setDraft({ ...draft, dueDate: event.currentTarget.value })} />
             </label>
             <label className="grid gap-2 text-sm font-bold text-slate-700">
               指名先
-              <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C] disabled:bg-slate-50" value={assigneeId} disabled={!canManageTeamsTodo} onChange={(event) => setAssigneeId(event.currentTarget.value)}>
+              <select className="w-full min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C] disabled:bg-slate-50" value={assigneeId} disabled={!canManageTeamsTodo} onChange={(event) => setAssigneeId(event.currentTarget.value)}>
                 <option value="">指名なし</option>
                 {assigneeOptions.map((profile) => (
                   <option key={`assignee-${profile.id}`} value={profile.id}>{profile.displayName} / {profile.position}</option>
@@ -4560,13 +4560,13 @@ function TeamsTodoSection({
             </label>
             <label className="grid gap-2 text-sm font-bold text-slate-700">
               優先度
-              <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C] disabled:bg-slate-50" value={draft.priority} disabled={!canManageTeamsTodo} onChange={(event) => setDraft({ ...draft, priority: event.currentTarget.value as MyTodoPriority })}>
+              <select className="w-full min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C] disabled:bg-slate-50" value={draft.priority} disabled={!canManageTeamsTodo} onChange={(event) => setDraft({ ...draft, priority: event.currentTarget.value as MyTodoPriority })}>
                 {myTodoPriorityOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
             <label className="grid gap-2 text-sm font-bold text-slate-700">
               ステータス
-              <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C] disabled:bg-slate-50" value={draft.status} disabled={!canManageTeamsTodo} onChange={(event) => setDraft({ ...draft, status: event.currentTarget.value as MyTodoStatus })}>
+              <select className="w-full min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C] disabled:bg-slate-50" value={draft.status} disabled={!canManageTeamsTodo} onChange={(event) => setDraft({ ...draft, status: event.currentTarget.value as MyTodoStatus })}>
                 {myTodoStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
@@ -4600,14 +4600,14 @@ function TeamsTodoSection({
                 メモ
                 <textarea className="min-h-24 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={editDraft.memo} onChange={(event) => setEditDraft({ ...editDraft, memo: event.currentTarget.value })} />
               </label>
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-4">
                 <label className="grid gap-2 text-sm font-bold text-slate-700">
                   期限
-                  <input className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" type="date" value={editDraft.dueDate} onChange={(event) => setEditDraft({ ...editDraft, dueDate: event.currentTarget.value })} />
+                  <input className="w-full min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" type="date" value={editDraft.dueDate} onChange={(event) => setEditDraft({ ...editDraft, dueDate: event.currentTarget.value })} />
                 </label>
                 <label className="grid gap-2 text-sm font-bold text-slate-700">
                   指名先
-                  <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={editAssigneeId} onChange={(event) => setEditAssigneeId(event.currentTarget.value)}>
+                  <select className="w-full min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={editAssigneeId} onChange={(event) => setEditAssigneeId(event.currentTarget.value)}>
                     <option value="">指名なし</option>
                     {assigneeOptions.map((profile) => (
                       <option key={`edit-assignee-${profile.id}`} value={profile.id}>{profile.displayName} / {profile.position}</option>
@@ -4616,13 +4616,13 @@ function TeamsTodoSection({
                 </label>
                 <label className="grid gap-2 text-sm font-bold text-slate-700">
                   優先度
-                  <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={editDraft.priority} onChange={(event) => setEditDraft({ ...editDraft, priority: event.currentTarget.value as MyTodoPriority })}>
+                  <select className="w-full min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={editDraft.priority} onChange={(event) => setEditDraft({ ...editDraft, priority: event.currentTarget.value as MyTodoPriority })}>
                     {myTodoPriorityOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </select>
                 </label>
                 <label className="grid gap-2 text-sm font-bold text-slate-700">
                   ステータス
-                  <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={editDraft.status} onChange={(event) => setEditDraft({ ...editDraft, status: event.currentTarget.value as MyTodoStatus })}>
+                  <select className="w-full min-w-0 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={editDraft.status} onChange={(event) => setEditDraft({ ...editDraft, status: event.currentTarget.value as MyTodoStatus })}>
                     {myTodoStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                   </select>
                 </label>
