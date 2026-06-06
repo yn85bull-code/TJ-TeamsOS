@@ -68,7 +68,7 @@ supabase/add_teams_todos_and_organization_20260606.sql
 supabase/add_teams_todo_assignments_20260606.sql
 ```
 
-- TeamToDoはProject/tasks/approvalsとは別物です
+- TeamToDoはProject / Task / Approvalsとは別物です
 - 取得範囲はログインユーザーの `organization` / `department` に限定します
 - 登録・編集・削除はOwner / Admin / Manager / Leaderに限定します
 - MemberはTeamToDoの閲覧のみです

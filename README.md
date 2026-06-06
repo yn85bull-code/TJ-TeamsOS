@@ -1,6 +1,6 @@
 # TJ-TeamOS
 
-Tauros向けのWork OS / MVPです。課題、Project、承認、権限管理、TaurosAI、MyToDo/TeamToDoをローカルデモからSupabase接続まで検証できます。
+Tauros向けのWork OS / MVPです。Project、Task、承認、権限管理、TaurosAI、MyToDo/TeamToDoをローカルデモからSupabase接続まで検証できます。
 
 ## ローカル起動
 
@@ -22,9 +22,9 @@ http://192.168.0.128:3000/
 
 ## 主な画面
 
-- `Dashboard`: 期限、承認、担当Project、MyToDo/TeamToDoを確認
-- `Issues`: 課題登録、タスク化、論理削除
-- `Project`: 通常タスク、チームタスク、承認待ち、差し戻しタスク
+- `Dashboard`: 期限、承認、担当Task、MyToDo/TeamToDoを確認
+- `Project`: Project登録、Task化、論理削除
+- `Task`: 通常タスク、チームタスク、承認待ち、差し戻しタスク
 - `MyToDo`: MyToDo・メモ、TeamToDo。どちらも承認フロー対象外
 - `Approvals`: Manager確認、Owner/Admin最終承認、差し戻し
 - `Organization`: 所属、役職、権限、在籍状態の確認
@@ -33,18 +33,18 @@ http://192.168.0.128:3000/
 
 ## MyToDo
 
-MyToDoは、課題化・通常タスク化するほどではない自分用のToDoとメモです。
+MyToDoは、Project化・通常Task化するほどではない自分用のToDoとメモです。
 
 - URL: `http://localhost:3000/my-todo`
 - 全権限で利用可能
 - Owner / Admin / Manager / Memberの全員が、自分のMyToDoのみ閲覧・編集可能
-- Issues / Project / Approvals / Manager確認 / Owner承認とは連動しない
+- Project / Task / Approvals / Manager確認 / Owner承認とは連動しない
 - Dashboardには未完了、期限が近い、高優先度のMyToDoだけを確認用に表示
 - 新規登録、編集、削除、完了チェック、ステータス変更、期限、優先度管理はMyToDoページで実施
 
 ## TeamToDo
 
-TeamToDoは、課題化やProject化する前のチーム共有ToDoです。
+TeamToDoは、Project化やTask化する前のチーム共有ToDoです。
 
 - MyToDoページ内の `TeamToDo` タブで利用
 - Owner / Admin / Manager / LeaderはTeamToDoを登録・編集・削除可能

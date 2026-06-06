@@ -457,7 +457,7 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
     setCreatedIssues((items) => items.map((item) => item.id === issue.id ? issue : item));
     addActivityLog({
       actor: currentUser?.name ?? "山田 太郎",
-      action: "課題を編集",
+      action: "Projectを編集",
       target: issue.title,
       detail: previousIssue ? describeIssueChanges(previousIssue, issue) : "編集内容を保存",
       targetId: issue.supabaseId,
@@ -484,7 +484,7 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
     setCreatedIssues((items) => items.map((item) => item.id === issue.id ? issue : item));
     addActivityLog({
       actor: currentUser?.name ?? "山田 太郎",
-      action: "課題を論理削除",
+      action: "Projectを論理削除",
       target: issue.title,
       targetId: issue.supabaseId,
       targetType: "issue",
@@ -496,7 +496,7 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
     setCreatedIssues((items) => items.map((item) => item.id === issue.id ? issue : item));
     addActivityLog({
       actor: currentUser?.name ?? "山田 太郎",
-      action: "課題を復元",
+      action: "Projectを復元",
       target: issue.title,
       targetId: issue.supabaseId,
       targetType: "issue",
@@ -611,7 +611,7 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
     setCreatedIssues((items) => [saved.entry, ...items]);
     addActivityLog({
       actor: currentUser?.name ?? "山田 太郎",
-      action: "課題を登録",
+      action: "Projectを登録",
       target: saved.entry.title,
       targetId: saved.entry.supabaseId,
       targetType: "issue",
@@ -950,8 +950,8 @@ function describeIssueChanges(before: CreatedIssueEntry, after: CreatedIssueEntr
     { label: "優先度", before: before.priority, after: after.priority },
     { label: "ステータス", before: before.status, after: after.status },
     { label: "期限", before: before.due, after: after.due },
-    { label: "課題分類大区分", before: before.category1, after: after.category1 },
-    { label: "課題分類小区分", before: before.category2, after: after.category2 },
+    { label: "Project分類大区分", before: before.category1, after: after.category1 },
+    { label: "Project分類小区分", before: before.category2, after: after.category2 },
     { label: "As-Is", before: before.asIs, after: after.asIs },
     { label: "To-Be", before: before.toBe, after: after.toBe },
   ]);

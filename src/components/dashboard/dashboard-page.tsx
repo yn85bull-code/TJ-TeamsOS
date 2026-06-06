@@ -152,7 +152,7 @@ export function KpiSummaryGrid({ onNavigate, createdTasks = [], createdIssues = 
     期限超過: "tasks",
     承認待ち: "approvals",
     高優先度: "tasks",
-    未担当課題: "issues",
+    未担当Project: "issues",
     AI提案候補: "ai",
   };
 
@@ -187,7 +187,7 @@ function buildDashboardKpis(createdTasks: TaskSummary[] = [], createdIssues: Arr
     { label: "期限超過", value: overdue, suffix: "件", diffLabel: "未完了タスクから集計", color: "red", icon: CircleAlert, progress: Math.min(overdue * 12, 100) },
     { label: "承認待ち", value: approvalWaiting, suffix: "件", diffLabel: "承認フローから集計", color: "purple", icon: ShieldCheck, progress: Math.min(approvalWaiting * 8, 100) },
     { label: "高優先度", value: mustPriority, suffix: "件", diffLabel: "Mustタスクから集計", color: "orange", icon: Flag, progress: Math.min(mustPriority * 10, 100) },
-    { label: "未担当課題", value: unassignedIssues, suffix: "件", diffLabel: "担当未設定の課題", color: "green", icon: Users, progress: Math.min(unassignedIssues * 18, 100) },
+    { label: "未担当Project", value: unassignedIssues, suffix: "件", diffLabel: "担当未設定のProject", color: "green", icon: Users, progress: Math.min(unassignedIssues * 18, 100) },
     { label: "AI提案候補", value: aiCandidates, suffix: "件", diffLabel: "受信・通知から集計", color: "blue", icon: Bot, progress: Math.min((aiCandidates / Math.max(totalKanbanTaskCount, 1)) * 100, 100) },
   ];
 }
@@ -605,7 +605,7 @@ export function RecentActivityCard({ onNavigate }: DashboardPageProps) {
     "新システム導入検討のタスクが更新されました",
     "システム導入契約が承認されました",
     "研修資料の更新にコメントされました",
-    "販売促進キャンペーン計画がタスク化されました",
+    "販売促進キャンペーン計画がTask化されました",
   ];
 
   return (

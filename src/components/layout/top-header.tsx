@@ -10,8 +10,8 @@ import { useMemo, useState } from "react";
 
 const descriptions: Record<string, string> = {
   dashboard: "権限に応じて、期限、承認、AI提案、担当タスクの状況を確認します。",
-  issues: "課題を親として登録し、タスク化と承認申請まで管理します。",
-  tasks: "既存の通常タスクをProjectとして管理し、進捗と承認申請の状態を確認します。",
+  issues: "Projectを親として登録し、Task化と承認申請まで管理します。",
+  tasks: "既存の通常タスクをTaskとして管理し、進捗と承認申請の状態を確認します。",
   my_todo: "MyToDoとTeamToDoを分けて管理します。どちらも承認フロー対象外です。",
   approvals: "承認待ちの申請を確認し、コメント付きで承認・差し戻しします。",
   teams: "所属、役職、権限、ユーザー情報をOrganizationとして確認します。",
@@ -24,8 +24,8 @@ const descriptions: Record<string, string> = {
 
 const navLabels: Record<string, string> = {
   dashboard: "Dashboard",
-  issues: "Issues",
-  tasks: "Project",
+  issues: "Project",
+  tasks: "Task",
   my_todo: "MyToDo",
   approvals: "Approvals",
   teams: "Organization",
@@ -37,13 +37,13 @@ const navLabels: Record<string, string> = {
 };
 
 const searchIndex = [
-  { title: "期限超過Project", subtitle: "Projectで期限超過を確認", target: "tasks" },
+  { title: "期限超過Task", subtitle: "Taskで期限超過を確認", target: "tasks" },
   { title: "MyToDo", subtitle: "MyToDoとTeamToDoを管理", target: "my_todo" },
   { title: "承認待ち申請", subtitle: "承認ページで最終確認", target: "approvals" },
   { title: "TaurosAI", subtitle: "社内ナレッジ、業務ルール、マニュアル、FAQを質問", target: "tauros_ai" },
   { title: "ナレッジ管理", subtitle: "マニュアル、FAQ、業務ルールの登録", target: "tauros_ai" },
   { title: "AI提案候補", subtitle: "Gmail / LINE / サイボウズ連携候補", target: "ai" },
-  { title: "課題一覧", subtitle: "課題からタスク化・承認申請へ進める", target: "issues" },
+  { title: "Project一覧", subtitle: "ProjectからTask化・承認申請へ進める", target: "issues" },
   { title: "Organization", subtitle: "所属・役職・権限・プロフィールを確認", target: "teams" },
   { title: "権限設定", subtitle: "権限ランクとメンバー権限を管理", target: "settings" },
   { title: "アクティビティログ", subtitle: "操作履歴と監査ログを確認", target: "logs" },
@@ -133,7 +133,7 @@ export function TopHeader({
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
               <input
                 className="h-11 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-sm outline-none transition focus:border-[#D6001C] focus:ring-4 focus:ring-red-100"
-                placeholder="検索（タスク・課題・メンバー・設定など）"
+                placeholder="検索（Task・Project・メンバー・設定など）"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 onFocus={() => {

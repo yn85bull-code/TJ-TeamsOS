@@ -197,7 +197,7 @@ type ApprovalsPageProps = NavigateHandler & {
 };
 
 export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, onDeleteIssue, onRestoreIssue, createdIssues = [], currentUserName = "山田 太郎", currentUserId, currentUserDepartment, appRole = "member", departmentOptions = DEFAULT_DEPARTMENTS }: NavigateHandler) {
-  const [actionMessage, setActionMessage] = useState("課題を選んで、詳細確認・タスク化・削除を行えます。");
+  const [actionMessage, setActionMessage] = useState("Projectを選んで、詳細確認・Task化・削除を行えます。");
   const [deletedIssueIds, setDeletedIssueIds] = useState<string[]>([]);
   const [detailIssueId, setDetailIssueId] = useState<string | null>(null);
   const [editIssueId, setEditIssueId] = useState<string | null>(null);
@@ -206,7 +206,7 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
   const [panelScrollToken, setPanelScrollToken] = useState(0);
   const [responsiblePerson, setResponsiblePerson] = useState("山田 太郎");
   const [assigneePerson, setAssigneePerson] = useState("未選択");
-  const flowSteps = ["課題登録", "タスク振り分け", "担当者が実行", "完了報告", "承認後に完了"];
+  const flowSteps = ["Project登録", "Task振り分け", "担当者が実行", "完了報告", "承認後に完了"];
   const activeCreatedIssues = useMemo(() => createdIssues.filter((issue) => !issue.deletedAt), [createdIssues]);
   const deletedCreatedIssues = useMemo(
     () => createdIssues.filter((issue) => issue.deletedAt && canViewIssueForUser(issue, currentUserName, currentUserId, currentUserDepartment, appRole)),
@@ -259,7 +259,7 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
     setDetailIssueId(null);
     setEditIssueId(null);
     setDeleteIssueId(null);
-    setActionMessage(`${issueId} のタスク化準備中です。担当責任者と担当者を選択してください。`);
+    setActionMessage(`${issueId} のTask化準備中です。担当責任者と担当者を選択してください。`);
     requestPanelScroll();
   };
 
@@ -268,7 +268,7 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
     const assignees = [responsiblePerson, assigneePerson].filter((person) => person !== "未選択");
     const uniqueAssignees = [...new Set(assignees)];
     const timestamp = formatDateTime(new Date());
-    setActionMessage(`${taskizeIssue.id} をタスク化しました。発生日: ${taskizeIssue.createdAt}。担当: ${uniqueAssignees.join(" / ")}。2名選任時は2名とも担当者として運用します。`);
+    setActionMessage(`${taskizeIssue.id} をTask化しました。発生日: ${taskizeIssue.createdAt}。担当: ${uniqueAssignees.join(" / ")}。2名選任時は2名とも担当者として運用します。`);
     onCreateTask?.({
       id: `task-${taskizeIssue.id}`,
       title: taskizeIssue.title,
@@ -289,7 +289,7 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
     });
     onAddLog?.({
       actor: currentUserName,
-      action: `課題をタスク化。発生日: ${taskizeIssue.createdAt} / 担当責任者: ${responsiblePerson} / 担当者: ${assigneePerson}`,
+      action: `ProjectをTask化。発生日: ${taskizeIssue.createdAt} / 担当責任者: ${responsiblePerson} / 担当者: ${assigneePerson}`,
       target: taskizeIssue.title,
       time: timestamp,
     });
@@ -321,7 +321,7 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
     if (!createdIssue) {
       onAddLog?.({
         actor: currentUserName,
-        action: "課題を一覧から削除",
+        action: "Projectを一覧から削除",
         target: pendingDeleteIssue.title,
         targetId: getIssueSupabaseId(pendingDeleteIssue),
         targetType: "issue",
@@ -337,11 +337,11 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
     delete restoredIssue.deletedById;
     setDeletedIssueIds((ids) => ids.filter((id) => id !== issue.id));
     onRestoreIssue?.(restoredIssue);
-    setActionMessage(`${issue.id} を復元しました。課題一覧に戻しています。`);
+    setActionMessage(`${issue.id} を復元しました。Project一覧に戻しています。`);
   };
 
   return (
-    <PageFrame title="課題" lead="課題を親として登録し、その中からタスクを振り分けます。タスク完了後に承認申請し、承認されて初めて完了扱いにします。">
+    <PageFrame title="Project" lead="Projectを親として登録し、その中からTaskを振り分けます。Task完了後に承認申請し、承認されて初めて完了扱いにします。">
       <PanelCard className="p-5">
         <h3 className="font-bold">基本フロー</h3>
         <div className="mt-4 grid gap-3 md:grid-cols-5">
@@ -357,12 +357,12 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
       <PanelCard className="p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="font-bold">課題一覧</h3>
+            <h3 className="font-bold">Project一覧</h3>
             <p className="mt-1 text-xs font-semibold text-slate-500">{actionMessage}</p>
           </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-            <input className="h-10 rounded-lg border border-slate-200 pl-9 pr-3 text-sm" placeholder="課題を検索" />
+            <input className="h-10 rounded-lg border border-slate-200 pl-9 pr-3 text-sm" placeholder="Projectを検索" />
           </div>
         </div>
 
@@ -371,7 +371,7 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
             <thead className="border-y border-slate-200 bg-slate-50 text-xs text-slate-500">
               <tr>
                 <th className="p-3">ID</th>
-                <th className="p-3">課題</th>
+                <th className="p-3">Project</th>
                 <th className="p-3">部門</th>
                 <th className="p-3">登録者</th>
                 <th className="p-3">優先度</th>
@@ -410,7 +410,7 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
                           </button>
                         ) : null}
                         <button className="inline-flex h-10 min-w-[80px] items-center justify-center whitespace-nowrap rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:text-slate-300" type="button" disabled={!canTaskizeThisIssue} onClick={() => openTaskize(issue.id)}>
-                          タスク化
+                          Task化
                         </button>
                         <button className="inline-flex h-10 min-w-[56px] items-center justify-center whitespace-nowrap rounded-lg bg-slate-800 px-3 text-xs font-bold text-white hover:bg-slate-950 disabled:cursor-not-allowed disabled:bg-slate-300" type="button" disabled={!canDeleteIssues} onClick={() => openDeleteConfirm(issue.id)}>
                           削除
@@ -422,7 +422,7 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
               })}
               {visibleIssues.length === 0 ? (
                 <tr>
-                  <td className="p-6 text-center text-sm text-slate-500" colSpan={8}>表示中の課題はありません。</td>
+                  <td className="p-6 text-center text-sm text-slate-500" colSpan={8}>表示中のProjectはありません。</td>
                 </tr>
               ) : null}
             </tbody>
@@ -434,8 +434,8 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
         <PanelCard className="p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h3 className="font-bold">削除済み課題</h3>
-              <p className="mt-1 text-xs font-semibold text-slate-500">論理削除された課題です。必要な場合は復元できます。</p>
+              <h3 className="font-bold">削除済みProject</h3>
+              <p className="mt-1 text-xs font-semibold text-slate-500">論理削除されたProjectです。必要な場合は復元できます。</p>
             </div>
             <span className="rounded bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{deletedCreatedIssues.length}件</span>
           </div>
@@ -444,7 +444,7 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
               <thead className="border-y border-slate-200 bg-slate-50 text-xs text-slate-500">
                 <tr>
                   <th className="p-3">ID</th>
-                  <th className="p-3">課題</th>
+                  <th className="p-3">Project</th>
                   <th className="p-3">部門</th>
                   <th className="p-3">削除日時</th>
                   <th className="p-3">操作</th>
@@ -482,8 +482,8 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
               <button className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600" type="button" onClick={() => setDetailIssueId(null)}>閉じる</button>
             </div>
             <div className="mt-5 grid gap-3 md:grid-cols-2">
-              <DetailBox label="課題分類大区分" value={getIssueCategory1(detailIssue)} />
-              <DetailBox label="課題分類小区分" value={getIssueCategory2(detailIssue)} />
+              <DetailBox label="Project分類大区分" value={getIssueCategory1(detailIssue)} />
+              <DetailBox label="Project分類小区分" value={getIssueCategory2(detailIssue)} />
               <DetailBox label="登録者" value={detailIssue.owner} />
               <DetailBox label="登録日時 / 発生日" value={detailIssue.createdAt} />
               <DetailBox label="As-Is" value={getIssueAsIsValue(detailIssue)} />
@@ -516,7 +516,7 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
                 <p className="text-xs font-bold text-[#D6001C]">削除前の確認アナウンス</p>
                 <h3 className="mt-1 font-bold text-slate-950">{pendingDeleteIssue.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-slate-700">
-                  この操作を確定すると、課題一覧から非表示になります。間違って押した場合はキャンセルしてください。削除を確定した場合も、操作履歴はアクティビティログに残ります。
+                  この操作を確定すると、Project一覧から非表示になります。間違って押した場合はキャンセルしてください。削除を確定した場合も、操作履歴はアクティビティログに残ります。
                 </p>
                 <p className="mt-2 text-xs font-bold text-slate-500">対象ID: {pendingDeleteIssue.id} / 登録日時: {pendingDeleteIssue.createdAt}</p>
               </div>
@@ -541,7 +541,7 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
           <PanelCard className="border-[#D6001C]/30 p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-xs font-bold text-[#D6001C]">タスク化</p>
+              <p className="text-xs font-bold text-[#D6001C]">Task化</p>
               <h3 className="mt-1 font-bold">{taskizeIssue.title}</h3>
               <p className="mt-2 text-sm text-slate-500">担当責任者と担当者を最大2名まで選択できます。2名選任時は2名とも担当者として運用します。</p>
               <p className="mt-2 text-xs font-bold text-slate-500">発生日: {taskizeIssue.createdAt}</p>
@@ -563,7 +563,7 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
             </label>
           </div>
           <div className="mt-5 flex flex-wrap gap-2">
-            <button className="h-10 rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white" type="button" onClick={confirmTaskize}>担当を確定してタスク化</button>
+            <button className="h-10 rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white" type="button" onClick={confirmTaskize}>担当を確定してTask化</button>
             <button className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-bold text-slate-700" type="button" onClick={() => setTaskizeIssueId(null)}>キャンセル</button>
           </div>
           </PanelCard>
@@ -613,7 +613,7 @@ function IssueEditPanel({
     <PanelCard className="border-[#D6001C]/30 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-bold uppercase text-[#D6001C]">課題編集</p>
+          <p className="text-xs font-bold uppercase text-[#D6001C]">Project編集</p>
           <h3 className="mt-1 font-bold">{issue.id}</h3>
           <p className="mt-2 text-xs font-bold text-slate-500">登録者: {issue.createdByName ?? "現在のユーザー"} / 登録日時: {issue.createdAt}</p>
         </div>
@@ -663,7 +663,7 @@ function IssueEditPanel({
           </select>
         </label>
         <label className="grid gap-2 text-sm font-bold text-slate-700">
-          課題分類大区分
+          Project分類大区分
           <select className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-[#D6001C]" value={category1} onChange={(event) => setCategory1(event.target.value)}>
             <option>事業課題</option>
             <option>組織課題</option>
@@ -671,7 +671,7 @@ function IssueEditPanel({
           </select>
         </label>
         <label className="grid gap-2 text-sm font-bold text-slate-700">
-          課題分類小区分
+          Project分類小区分
           <select className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-[#D6001C]" value={category2} onChange={(event) => setCategory2(event.target.value)}>
             <option>顕在課題</option>
             <option>潜在課題</option>
@@ -1006,10 +1006,10 @@ export function TasksPage({
     [activeCreatedTasks],
   );
   const taskTabs = [
-    { key: "mine", label: "自分のProject", count: openMyTaskSummaries.length },
-    { key: "team", label: "チームProject", count: openTaskSummaries.length },
-    { key: "approval", label: "承認待ちProject", count: approvalTaskSummaries.length },
-    { key: "sendback", label: "差し戻しProject", count: visibleSendbackTasks.length },
+    { key: "mine", label: "自分のTask", count: openMyTaskSummaries.length },
+    { key: "team", label: "チームTask", count: openTaskSummaries.length },
+    { key: "approval", label: "承認待ちTask", count: approvalTaskSummaries.length },
+    { key: "sendback", label: "差し戻しTask", count: visibleSendbackTasks.length },
   ] as const;
   const canUpdateTasks = can(appRole, "tasks", "update");
   const canDeleteTasks = can(appRole, "tasks", "delete");
@@ -1189,7 +1189,7 @@ export function TasksPage({
   };
 
   return (
-    <PageFrame title="Project" lead="通常タスク、チームタスク、承認待ち、差し戻しをProjectとして管理します。MyToDo/TeamToDoとは分けて扱います。">
+    <PageFrame title="Task" lead="通常タスク、チームタスク、承認待ち、差し戻しをTaskとして管理します。MyToDo/TeamToDoとは分けて扱います。">
       <PanelCard className="p-4">
         <div className="flex flex-wrap gap-2">
           {taskTabs.map((tab) => (
@@ -1316,9 +1316,9 @@ export function TasksPage({
 
               {createdTaskDetail ? (
                 <div className="mt-4 rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-xs text-emerald-800">
-                  <strong>{createdTaskDetail.sourceType === "direct" ? "新規タスク登録" : "課題からタスク化"}</strong>
-                  <p className="mt-1">{createdTaskDetail.sourceType === "direct" ? "登録" : `元課題: ${createdTaskDetail.sourceIssueId}`} / 発生日: {createdTaskDetail.issueCreatedAt}</p>
-                  <p className="mt-1 font-bold">タスク化日時: {createdTaskDetail.taskizedAt}</p>
+                  <strong>{createdTaskDetail.sourceType === "direct" ? "新規Task登録" : "ProjectからTask化"}</strong>
+                  <p className="mt-1">{createdTaskDetail.sourceType === "direct" ? "登録" : `元Project: ${createdTaskDetail.sourceIssueId}`} / 発生日: {createdTaskDetail.issueCreatedAt}</p>
+                  <p className="mt-1 font-bold">Task化日時: {createdTaskDetail.taskizedAt}</p>
                 </div>
               ) : null}
 
@@ -1388,7 +1388,7 @@ export function TasksPage({
                 <p className="mt-2 text-sm leading-6 text-slate-700">
                   この操作を確定すると、タスク一覧から非表示になります。間違って押した場合はキャンセルしてください。削除を確定した場合も、削除済みタスクから復元できます。
                 </p>
-                <p className="mt-2 text-xs font-bold text-slate-500">対象ID: {pendingDeleteTask.id} / タスク化日時: {pendingDeleteTask.taskizedAt}</p>
+                <p className="mt-2 text-xs font-bold text-slate-500">対象ID: {pendingDeleteTask.id} / Task化日時: {pendingDeleteTask.taskizedAt}</p>
               </div>
               <button className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600" type="button" onClick={() => setDeleteTaskId(null)}>
                 閉じる
@@ -4020,7 +4020,7 @@ export function MyTodoPage({
   };
 
   return (
-    <PageFrame title="MyToDo" lead="課題化・タスク化する前のMyToDoとメモを管理します。承認フローには連動しません。">
+    <PageFrame title="MyToDo" lead="Project化・Task化する前のMyToDoとメモを管理します。承認フローには連動しません。">
       <section className="grid gap-4 lg:grid-cols-3">
         <PanelCard className="p-5">
           <div className="flex items-center gap-3">
@@ -4428,7 +4428,7 @@ function TeamsTodoSection({
           </label>
           <label className="grid gap-2 text-sm font-bold text-slate-700">
             メモ
-            <textarea className="min-h-28 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C] disabled:bg-slate-50" value={draft.memo} disabled={!canManageTeamsTodo} onChange={(event) => setDraft({ ...draft, memo: event.currentTarget.value })} placeholder="課題化する前の共有メモ" />
+            <textarea className="min-h-28 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C] disabled:bg-slate-50" value={draft.memo} disabled={!canManageTeamsTodo} onChange={(event) => setDraft({ ...draft, memo: event.currentTarget.value })} placeholder="Project化する前の共有メモ" />
           </label>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <label className="grid gap-2 text-sm font-bold text-slate-700">

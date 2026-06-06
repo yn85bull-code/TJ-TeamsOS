@@ -59,7 +59,7 @@ export function CreateDrawer({
     resetForm();
     onClose();
   };
-  const helperText = "課題は、現状の困りごとや改善テーマです。課題を登録し、必要に応じて具体的なタスクへ振り分けます。";
+  const helperText = "Projectは、現状の困りごとや改善テーマです。Projectを登録し、必要に応じて具体的なTaskへ振り分けます。";
 
   return (
     <div className="fixed inset-0 z-50">
@@ -78,8 +78,8 @@ export function CreateDrawer({
         <div className="grid gap-5 overflow-y-auto p-6">
           <section className="rounded-xl border border-red-100 bg-red-50 p-4">
             <ClipboardList className="text-[#D6001C]" size={22} />
-            <h3 className="mt-3 font-bold text-slate-950">課題を登録</h3>
-            <p className="mt-1 text-sm leading-6 text-slate-600">As-Is、To-Be、分類、登録者、期限を登録します。タスク化と承認申請は登録後の課題フローから行います。</p>
+            <h3 className="mt-3 font-bold text-slate-950">Projectを登録</h3>
+            <p className="mt-1 text-sm leading-6 text-slate-600">As-Is、To-Be、分類、登録者、期限を登録します。Task化と承認申請は登録後のProjectフローから行います。</p>
           </section>
 
           <form
@@ -100,7 +100,7 @@ export function CreateDrawer({
                 asIs: asIs.trim(),
                 toBe: toBe.trim(),
                 registeredAt: registrationDateTime,
-                label: "課題を作成",
+                label: "Projectを作成",
               });
               resetForm();
             }}
@@ -111,13 +111,13 @@ export function CreateDrawer({
 
             <div className="grid gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-600">
               <div>
-                <p className="font-bold text-slate-800">課題分類大区分</p>
+                <p className="font-bold text-slate-800">Project分類大区分</p>
                 <p><strong>事業課題:</strong> 売上・利益・出店・集客・サービス拡大など、事業成長に関わる課題。</p>
                 <p><strong>組織課題:</strong> 人・体制・役割・責任範囲・評価・マネジメントの課題。</p>
                 <p><strong>業務課題:</strong> 日々のオペレーション・手順・処理漏れ・業務フローの課題。</p>
               </div>
               <div>
-                <p className="font-bold text-slate-800">課題分類小区分</p>
+                <p className="font-bold text-slate-800">Project分類小区分</p>
                 <p><strong>顕在課題:</strong> すでに問題として見えており、業務や数字に影響が出ている課題。</p>
                 <p><strong>潜在課題:</strong> まだ大きな問題にはなっていないが、将来的にリスクになる可能性がある課題。</p>
               </div>
@@ -141,7 +141,7 @@ export function CreateDrawer({
 
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="grid gap-2 text-sm font-bold text-slate-700">
-                課題分類大区分
+                Project分類大区分
                 <select className="h-11 rounded-lg border border-slate-200 px-3 font-normal outline-none focus:border-[#D6001C]" value={category1} onChange={(event) => setCategory1(event.target.value)}>
                   <option>事業課題</option>
                   <option>組織課題</option>
@@ -149,7 +149,7 @@ export function CreateDrawer({
                 </select>
               </label>
               <label className="grid gap-2 text-sm font-bold text-slate-700">
-                課題分類小区分
+                Project分類小区分
                 <select className="h-11 rounded-lg border border-slate-200 px-3 font-normal outline-none focus:border-[#D6001C]" value={category2} onChange={(event) => setCategory2(event.target.value)}>
                   <option>顕在課題</option>
                   <option>潜在課題</option>
@@ -205,7 +205,7 @@ export function CreateDrawer({
               <span className="flex items-center gap-2">As-Is <RequiredBadge /></span>
               <textarea
                 className="min-h-32 rounded-lg border border-slate-200 px-3 py-2 font-normal outline-none focus:border-[#D6001C] focus:ring-4 focus:ring-red-100"
-                placeholder="現状の課題や困っている状態を入力"
+                placeholder="現状の困りごとや改善テーマを入力"
                 required
                 value={asIs}
                 onChange={(event) => setAsIs(event.target.value)}
