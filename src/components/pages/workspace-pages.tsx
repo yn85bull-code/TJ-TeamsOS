@@ -8,7 +8,7 @@ import { loadLocalTaskRecords, saveLocalTaskRecords, saveTaskRecord } from "@/li
 import { formatMyTodoDateTime, type MyTodoEntry, type MyTodoPriority, type MyTodoStatus } from "@/lib/workspace/my-todo-store";
 import { type TeamsTodoEntry } from "@/lib/workspace/teams-todo-store";
 import { DEFAULT_DEPARTMENTS, normalizeDepartmentList } from "@/lib/workspace/department-store";
-import { OPERATIONAL_ROLE_OPTIONS, TeamProfileEntry, demoUsersToProfiles, getRoleLabel, inviteTeamUser, loadTeamProfilesFromSupabase, updateProfileDepartmentAndPositionInSupabase, updateProfileEmploymentStatusInSupabase, updateProfileRoleInSupabase } from "@/lib/workspace/profile-store";
+import { OPERATIONAL_ROLE_OPTIONS, TeamProfileEntry, demoUsersToProfiles, getRoleLabel, inviteTeamUser, loadTeamProfilesFromSupabase, updateProfileAvatarInSupabase, updateProfileDepartmentAndPositionInSupabase, updateProfileEmploymentStatusInSupabase, updateProfileRoleInSupabase } from "@/lib/workspace/profile-store";
 import { AppRole } from "@/types/database";
 import { BookOpen, Bot, Building2, CalendarDays, CheckCircle2, ClipboardList, Clock, Database, FileText, Inbox, ListChecks, LockKeyhole, Pencil, Plus, Save, Search, Send, ShieldCheck, Trash2, Upload, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -2258,6 +2258,19 @@ function PermissionBadge({ rank }: { rank: string }) {
   return <span className={`inline-flex min-w-20 justify-center rounded-md px-2 py-1 text-xs font-black ring-1 ${config}`}>{rank}</span>;
 }
 
+function ProfileAvatar({ name, avatarUrl, sizeClassName = "size-10" }: { name: string; avatarUrl?: string; sizeClassName?: string }) {
+  return (
+    <div className={`grid shrink-0 place-items-center overflow-hidden rounded-full bg-slate-200 text-sm font-black text-slate-700 ring-1 ring-slate-200 ${sizeClassName}`}>
+      {avatarUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img className="size-full object-cover" src={avatarUrl} alt={`${name}のプロフィール画像`} />
+      ) : (
+        name.slice(0, 1)
+      )}
+    </div>
+  );
+}
+
 const organizationViewTabs = [
   { key: "organization", label: "所属別" },
   { key: "chart", label: "組織図" },
@@ -3236,16 +3249,20 @@ export function SettingsPage({
   onDeleteDepartment,
   currentUserId,
   currentUserName = "山田 太郎",
+  currentUserAvatarUrl,
   currentAuthSource = "demo",
   appRole = "member",
+  onUpdateCurrentUser,
 }: {
   departments?: string[];
   onAddDepartment?: (name: string) => void;
   onDeleteDepartment?: (name: string) => void;
   currentUserId?: string;
   currentUserName?: string;
+  currentUserAvatarUrl?: string;
   currentAuthSource?: "demo" | "supabase";
   appRole?: AppRole;
+  onUpdateCurrentUser?: (patch: { avatarUrl?: string }) => void;
 } = {}) {
   const canManageSettings = can(appRole, "settings", "manage");
   const canChangeUserRoles = appRole === "owner" || appRole === "admin";
@@ -3327,6 +3344,7 @@ export function SettingsPage({
   const [isInviting, setIsInviting] = useState(false);
   const [profiles, setProfiles] = useState<TeamProfileEntry[]>(demoUsersToProfiles());
   const [profileDrafts, setProfileDrafts] = useState<Record<string, { departmentName: string; position: string }>>({});
+  const [profileAvatarDrafts, setProfileAvatarDrafts] = useState<Record<string, string>>({});
   const [profileStatus, setProfileStatus] = useState<"loading" | "ready" | "error">("loading");
   const [profileMessage, setProfileMessage] = useState("");
   const [savingProfileId, setSavingProfileId] = useState<string | null>(null);
@@ -3390,8 +3408,28 @@ export function SettingsPage({
 
         return nextDrafts;
       });
+      setProfileAvatarDrafts((drafts) => {
+        const nextDrafts = { ...drafts };
+        const profileIds = new Set(profiles.map((profile) => profile.id));
+
+        profiles.forEach((profile) => {
+          if (!Object.prototype.hasOwnProperty.call(nextDrafts, profile.id)) {
+            nextDrafts[profile.id] = profile.id === currentUserId
+              ? currentUserAvatarUrl ?? profile.avatarUrl ?? ""
+              : profile.avatarUrl ?? "";
+          }
+        });
+
+        Object.keys(nextDrafts).forEach((profileId) => {
+          if (!profileIds.has(profileId)) {
+            delete nextDrafts[profileId];
+          }
+        });
+
+        return nextDrafts;
+      });
     });
-  }, [profiles]);
+  }, [currentUserAvatarUrl, currentUserId, profiles]);
 
   const getProfileDraft = (profile: TeamProfileEntry) => profileDrafts[profile.id] ?? {
     departmentName: profile.departmentName,
@@ -3405,6 +3443,15 @@ export function SettingsPage({
         departmentName: draft.departmentName ?? drafts[profileId]?.departmentName ?? "",
         position: draft.position ?? drafts[profileId]?.position ?? "",
       },
+    }));
+  };
+
+  const getProfileAvatarDraft = (profile: TeamProfileEntry) => profileAvatarDrafts[profile.id] ?? (profile.id === currentUserId ? currentUserAvatarUrl ?? profile.avatarUrl ?? "" : profile.avatarUrl ?? "");
+
+  const updateProfileAvatarDraft = (profileId: string, avatarUrl: string) => {
+    setProfileAvatarDrafts((drafts) => ({
+      ...drafts,
+      [profileId]: avatarUrl,
     }));
   };
 
@@ -3426,6 +3473,10 @@ export function SettingsPage({
         departmentName: updatedProfile.departmentName,
         position: updatedProfile.position,
       },
+    }));
+    setProfileAvatarDrafts((drafts) => ({
+      ...drafts,
+      [updatedProfile.id]: updatedProfile.avatarUrl ?? "",
     }));
   };
 
@@ -3592,6 +3643,54 @@ export function SettingsPage({
       console.warn("Profile employment status update failed.", error);
       setProfiles(previousProfiles);
       const message = error instanceof Error ? error.message : "ユーザー状態の更新に失敗しました。";
+      setProfileMessage(message);
+    } finally {
+      setSavingProfileId(null);
+    }
+  };
+
+  const updateProfileAvatar = async (profile: TeamProfileEntry) => {
+    if (!canChangeUserRoles && profile.id !== currentUserId) return;
+    const avatarUrl = getProfileAvatarDraft(profile).trim();
+
+    if (avatarUrl && !isValidProfileImageUrl(avatarUrl)) {
+      setProfileMessage("プロフィール画像URLは http(s) または data:image 形式で入力してください。");
+      return;
+    }
+
+    const previousProfiles = profiles;
+    setSavingProfileId(profile.id);
+    setProfileMessage(`${profile.displayName}さんのプロフィール画像を更新しています。`);
+    setProfiles((items) => items.map((item) => item.id === profile.id ? { ...item, avatarUrl } : item));
+    if (profile.id === currentUserId) {
+      onUpdateCurrentUser?.({ avatarUrl });
+    }
+    if (currentAuthSource !== "supabase" || profile.source === "demo") {
+      updateProfileAvatarDraft(profile.id, avatarUrl);
+      setProfileMessage(`${profile.displayName}さんのプロフィール画像をデモ表示上で更新しました。Supabase反映には本ログインが必要です。`);
+      setSavingProfileId(null);
+      return;
+    }
+
+    try {
+      const result = await updateProfileAvatarInSupabase(profile.id, avatarUrl);
+      if (result.profile) {
+        applyUpdatedProfile(result.profile);
+        if (profile.id === currentUserId) {
+          onUpdateCurrentUser?.({ avatarUrl: result.profile.avatarUrl ?? "" });
+        }
+      }
+      setProfileMessage(result.source === "supabase"
+        ? `${profile.displayName}さんのプロフィール画像を更新しました。`
+        : `${profile.displayName}さんのプロフィール画像をデモ表示上で更新しました。Supabase反映には本ログインが必要です。`);
+    } catch (error) {
+      console.warn("Profile avatar update failed.", error);
+      setProfiles(previousProfiles);
+      updateProfileAvatarDraft(profile.id, profile.avatarUrl ?? "");
+      if (profile.id === currentUserId) {
+        onUpdateCurrentUser?.({ avatarUrl: profile.avatarUrl ?? "" });
+      }
+      const message = error instanceof Error ? error.message : "プロフィール画像の更新に失敗しました。";
       setProfileMessage(message);
     } finally {
       setSavingProfileId(null);
@@ -3810,16 +3909,46 @@ export function SettingsPage({
                       const isSaving = savingProfileId === profile.id;
                       const canEditRole = canChangeUserRoles && !isOwner;
                       const canEditProfileDetails = canChangeUserRoles;
+                      const canEditProfileAvatar = canChangeUserRoles || profile.id === currentUserId;
                       const canEditEmploymentStatus = canChangeUserRoles && !isOwner;
                       const draft = getProfileDraft(profile);
                       const profileDepartmentOptions = normalizeDepartmentList([...normalizedDepartments, profile.departmentName, draft.departmentName]);
                       const normalizedDraftPosition = draft.position.trim() || "未設定";
                       const profileDetailsChanged = draft.departmentName !== profile.departmentName || normalizedDraftPosition !== profile.position;
+                      const avatarDraft = getProfileAvatarDraft(profile);
+                      const avatarChanged = avatarDraft.trim() !== (profile.avatarUrl ?? "");
                       return (
                         <tr key={profile.id} className="border-b border-slate-100 hover:bg-slate-50/70">
                           <td className="p-3">
-                            <p className="font-black text-slate-950">{profile.displayName}</p>
-                            <p className="mt-1 text-xs font-semibold text-slate-500">{profile.email || "メール未設定"}</p>
+                            <div className="flex items-center gap-3">
+                              <ProfileAvatar name={profile.displayName} avatarUrl={avatarDraft || profile.avatarUrl} />
+                              <div className="min-w-0">
+                                <p className="font-black text-slate-950">{profile.displayName}</p>
+                                <p className="mt-1 truncate text-xs font-semibold text-slate-500">{profile.email || "メール未設定"}</p>
+                              </div>
+                            </div>
+                            <div className="mt-3 grid min-w-[280px] gap-2 lg:grid-cols-[1fr_72px]">
+                              <input
+                                className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                                placeholder="プロフィール画像URL"
+                                value={avatarDraft}
+                                disabled={!canEditProfileAvatar || isSaving}
+                                onChange={(event) => updateProfileAvatarDraft(profile.id, event.target.value)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter" && avatarChanged) {
+                                    void updateProfileAvatar(profile);
+                                  }
+                                }}
+                              />
+                              <button
+                                className="h-10 rounded-lg bg-slate-900 px-3 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                                type="button"
+                                disabled={!canEditProfileAvatar || isSaving || !avatarChanged}
+                                onClick={() => void updateProfileAvatar(profile)}
+                              >
+                                保存
+                              </button>
+                            </div>
                           </td>
                           <td className="p-3">
                             <p className="font-bold text-slate-800">{profile.departmentName}</p>
@@ -3985,6 +4114,16 @@ export function SettingsPage({
       </section>
     </PageFrame>
   );
+}
+
+function isValidProfileImageUrl(value: string) {
+  if (value.startsWith("data:image/")) return true;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
 }
 
 type MyTodoFormState = {

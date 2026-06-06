@@ -46,6 +46,7 @@ export type TeamProfileUpdatePayload = {
   position?: string;
   isActive?: boolean;
   employmentStatus?: string;
+  avatarUrl?: string;
 };
 
 export const OPERATIONAL_ROLE_OPTIONS: Array<{ value: AppRole; label: string; description: string }> = [
@@ -123,6 +124,10 @@ export async function updateProfileEmploymentStatusInSupabase(
   payload: Pick<TeamProfileUpdatePayload, "isActive" | "employmentStatus">,
 ) {
   return updateTeamProfileInSupabase({ profileId, ...payload });
+}
+
+export async function updateProfileAvatarInSupabase(profileId: string, avatarUrl: string) {
+  return updateTeamProfileInSupabase({ profileId, avatarUrl });
 }
 
 export async function updateTeamProfileInSupabase(payload: TeamProfileUpdatePayload) {

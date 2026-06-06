@@ -29,6 +29,7 @@ export function profileToAuthUser(profile: ProfileRow): AuthUser {
     role: roleLabels[appRole],
     appRole,
     initial: displayName.slice(0, 1),
+    avatarUrl: profile.avatar_url ?? fallback?.avatarUrl,
     authSource: "supabase",
   };
 }

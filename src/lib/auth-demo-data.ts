@@ -7,6 +7,7 @@ export type AuthUser = {
   role: string;
   appRole?: string;
   initial: string;
+  avatarUrl?: string;
   authSource?: "demo" | "supabase";
 };
 

@@ -36,6 +36,7 @@ import { createIssueRecord, createTaskRecord, loadCreatedRecordsFromSupabase, re
 import { DEPARTMENTS_STORAGE_KEY, DEFAULT_DEPARTMENTS, normalizeDepartmentList } from "@/lib/workspace/department-store";
 import { createAssignedMyTodoRecord, createMyTodoRecord, formatMyTodoDateTime, loadMyTodos, softDeleteMyTodoRecord, updateMyTodoRecord, type MyTodoEntry } from "@/lib/workspace/my-todo-store";
 import { createNotificationRecord, loadNotificationsFromSupabase, markNotificationReadRecord, markNotificationsReadRecord, type AppNotificationEntry } from "@/lib/workspace/notification-store";
+import { updateProfileAvatarInSupabase } from "@/lib/workspace/profile-store";
 import { createTeamsTodoRecord, loadTeamsTodos, softDeleteTeamsTodoRecord, updateTeamsTodoRecord, type TeamsTodoEntry } from "@/lib/workspace/teams-todo-store";
 import { AppRole } from "@/types/database";
 import { CheckCircle2, X } from "lucide-react";
@@ -567,6 +568,23 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
     setTeamsTodos((items) => items.map((item) => isSameTeamsTodo(item, todo) ? todo : item));
     void softDeleteTeamsTodoRecord(todo, currentUser?.id);
   };
+  const updateCurrentUser = (patch: Partial<Pick<AuthUser, "avatarUrl">>) => {
+    setCurrentUser((user) => user ? { ...user, ...patch } : user);
+  };
+  const saveCurrentUserAvatar = async (avatarUrl: string) => {
+    if (!currentUser) return;
+    setCurrentUser((user) => user ? { ...user, avatarUrl } : user);
+    if (currentUser.authSource !== "supabase") return;
+    try {
+      const result = await updateProfileAvatarInSupabase(currentUser.id, avatarUrl);
+      if (result.profile) {
+        setCurrentUser((user) => user ? { ...user, avatarUrl: result.profile?.avatarUrl ?? "" } : user);
+      }
+    } catch (error) {
+      setCurrentUser((user) => user ? { ...user, avatarUrl: currentUser.avatarUrl } : user);
+      throw error;
+    }
+  };
   const assignTeamsTodoToMyTodo = async (todo: TeamsTodoEntry) => {
     if (!todo.assigneeId || !todo.assigneeName || !currentUser) return;
     const now = formatMyTodoDateTime(new Date());
@@ -668,6 +686,7 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
           onSelect={setActiveKey}
           onCreate={openCreateDrawer}
           onLogout={logout}
+          onUpdateAvatar={saveCurrentUserAvatar}
           notifications={visibleHeaderNotifications}
           onMarkNotificationRead={markNotificationRead}
           onMarkAllNotificationsRead={markAllNotificationsRead}
@@ -689,6 +708,7 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
             currentUserName={currentUser.name}
             currentUserId={currentUser.id}
             currentUserDepartment={currentUser.department}
+            currentUserAvatarUrl={currentUser.avatarUrl}
             currentAuthSource={currentUser.authSource}
             approvalReviewerOptions={approvalReviewerOptions}
             finalApprover={finalApprover}
@@ -717,6 +737,7 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
             departments={departments}
             onAddDepartment={addDepartment}
             onDeleteDepartment={deleteDepartment}
+            onUpdateCurrentUser={updateCurrentUser}
           />
         </main>
       </div>
@@ -767,6 +788,7 @@ function ActivePage({
   currentUserName,
   currentUserId,
   currentUserDepartment,
+  currentUserAvatarUrl,
   currentAuthSource,
   approvalReviewerOptions,
   finalApprover,
@@ -795,6 +817,7 @@ function ActivePage({
   departments,
   onAddDepartment,
   onDeleteDepartment,
+  onUpdateCurrentUser,
 }: {
   activeKey: string;
   onNavigate: (key: string) => void;
@@ -810,6 +833,7 @@ function ActivePage({
   currentUserName: string;
   currentUserId: string;
   currentUserDepartment: string;
+  currentUserAvatarUrl?: string;
   currentAuthSource?: AuthUser["authSource"];
   approvalReviewerOptions: ApprovalReviewerOption[];
   finalApprover: ApprovalReviewerOption;
@@ -838,6 +862,7 @@ function ActivePage({
   departments: string[];
   onAddDepartment: (name: string) => void;
   onDeleteDepartment: (name: string) => void;
+  onUpdateCurrentUser: (patch: Partial<Pick<AuthUser, "avatarUrl">>) => void;
 }) {
   switch (activeKey) {
     case "dashboard":
@@ -861,7 +886,7 @@ function ActivePage({
     case "logs":
       return <ActivityLogsPage activityLogs={activityLogs} />;
     case "settings":
-      return <SettingsPage departments={departments} onAddDepartment={onAddDepartment} onDeleteDepartment={onDeleteDepartment} currentUserId={currentUserId} currentUserName={currentUserName} currentAuthSource={currentAuthSource} appRole={appRole} />;
+      return <SettingsPage departments={departments} onAddDepartment={onAddDepartment} onDeleteDepartment={onDeleteDepartment} currentUserId={currentUserId} currentUserName={currentUserName} currentUserAvatarUrl={currentUserAvatarUrl} currentAuthSource={currentAuthSource} appRole={appRole} onUpdateCurrentUser={onUpdateCurrentUser} />;
     default:
       return <DashboardPage onNavigate={onNavigate} createdTasks={createdTasks} createdIssues={createdIssues} myTodos={myTodos} teamsTodos={teamsTodos} departmentOptions={departments} appRole={appRole} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} />;
   }

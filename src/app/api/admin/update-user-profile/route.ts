@@ -43,11 +43,13 @@ export async function POST(request: NextRequest) {
     const hasPosition = hasOwn(payload, "position");
     const hasIsActive = hasOwn(payload, "isActive");
     const hasEmploymentStatus = hasOwn(payload, "employmentStatus");
+    const hasAvatarUrl = hasOwn(payload, "avatarUrl");
     const role = hasRole ? normalizeManagedRole(payload.role) : undefined;
     const departmentName = hasDepartmentName ? normalizeText(payload.departmentName) : undefined;
     const position = hasPosition ? normalizeText(payload.position) || "未設定" : undefined;
     const isActive = hasIsActive ? Boolean(payload.isActive) : undefined;
     const employmentStatus = hasEmploymentStatus ? normalizeText(payload.employmentStatus) : undefined;
+    const avatarUrl = hasAvatarUrl ? normalizeOptionalUrl(payload.avatarUrl) : undefined;
 
     if (!profileId) {
       return NextResponse.json({ error: "更新対象のユーザーを確認してください。" }, { status: 400 });
@@ -61,7 +63,10 @@ export async function POST(request: NextRequest) {
     if (hasEmploymentStatus && !employmentStatus) {
       return NextResponse.json({ error: "状態を選択してください。" }, { status: 400 });
     }
-    if (!hasRole && !hasDepartmentName && !hasPosition && !hasIsActive && !hasEmploymentStatus) {
+    if (hasAvatarUrl && avatarUrl === undefined) {
+      return NextResponse.json({ error: "プロフィール画像URLは http(s) または data:image 形式で指定してください。" }, { status: 400 });
+    }
+    if (!hasRole && !hasDepartmentName && !hasPosition && !hasIsActive && !hasEmploymentStatus && !hasAvatarUrl) {
       return NextResponse.json({ error: "更新内容を指定してください。" }, { status: 400 });
     }
 
@@ -84,13 +89,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "ログインユーザーを確認できません。" }, { status: 401 });
     }
 
+    const isSelfAvatarUpdate = hasAvatarUrl
+      && !hasRole
+      && !hasDepartmentName
+      && !hasPosition
+      && !hasIsActive
+      && !hasEmploymentStatus
+      && requesterData.user.id === profileId;
+
     const profilesSelect = serviceClient.from("profiles") as unknown as SelectByIdTable<ProfileRow>;
     const { data: requesterProfile, error: requesterProfileError } = await profilesSelect
       .select("id, role")
       .eq("id", requesterData.user.id)
       .single();
 
-    if (requesterProfileError || !["owner", "admin"].includes(requesterProfile?.role ?? "")) {
+    if (requesterProfileError || (!["owner", "admin"].includes(requesterProfile?.role ?? "") && !isSelfAvatarUpdate)) {
       return NextResponse.json({ error: "ユーザー情報の変更はOwner/Adminのみ実行できます。" }, { status: 403 });
     }
 
@@ -135,6 +148,9 @@ export async function POST(request: NextRequest) {
     }
     if (hasEmploymentStatus) {
       updatePayload.employment_status = employmentStatus;
+    }
+    if (hasAvatarUrl) {
+      updatePayload.avatar_url = avatarUrl;
     }
 
     const profilesTable = serviceClient.from("profiles") as unknown as ProfileUpdateTable;
@@ -217,6 +233,20 @@ function normalizeManagedRole(role: unknown): AppRole | undefined {
 
 function normalizeText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeOptionalUrl(value: unknown) {
+  if (typeof value !== "string") return undefined;
+  const text = value.trim();
+  if (!text) return "";
+  if (text.startsWith("data:image/")) return text;
+
+  try {
+    const url = new URL(text);
+    return url.protocol === "https:" || url.protocol === "http:" ? text : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function getSupabaseServerEnv() {

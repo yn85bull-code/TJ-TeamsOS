@@ -67,6 +67,7 @@ export function TopHeader({
   onSelect,
   onCreate,
   onLogout,
+  onUpdateAvatar,
   notifications,
   onMarkNotificationRead,
   onMarkAllNotificationsRead,
@@ -79,6 +80,7 @@ export function TopHeader({
   onSelect: (key: string) => void;
   onCreate: () => void;
   onLogout: () => void;
+  onUpdateAvatar?: (avatarUrl: string) => Promise<void> | void;
   notifications?: AppNotificationEntry[];
   onMarkNotificationRead?: (notification: AppNotificationEntry) => void;
   onMarkAllNotificationsRead?: (notifications: AppNotificationEntry[]) => void;
@@ -87,6 +89,9 @@ export function TopHeader({
   const [searchFocused, setSearchFocused] = useState(false);
   const [openPanel, setOpenPanel] = useState<"notifications" | "help" | "account" | null>(null);
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
+  const [avatarDraft, setAvatarDraft] = useState(user.avatarUrl ?? "");
+  const [avatarMessage, setAvatarMessage] = useState("");
+  const [avatarSaving, setAvatarSaving] = useState(false);
   const notificationItems = (notifications ?? demoHeaderNotifications).filter((item) => canAccessNavItem(appRole, item.target));
   const unreadCount = notificationItems.filter((item) => !isNotificationRead(item, readNotificationIds)).length;
   const displayTitle = navLabels[activeKey] ?? title;
@@ -98,6 +103,10 @@ export function TopHeader({
   }, [appRole, query]);
 
   const selectPanel = (panel: "notifications" | "help" | "account") => {
+    if (panel === "account" && openPanel !== "account") {
+      setAvatarDraft(user.avatarUrl ?? "");
+      setAvatarMessage("");
+    }
     setOpenPanel((current) => (current === panel ? null : panel));
   };
 
@@ -117,6 +126,26 @@ export function TopHeader({
   const markAllNotificationsRead = () => {
     setReadNotificationIds((ids) => [...new Set([...ids, ...notificationItems.map((item) => item.id)])]);
     onMarkAllNotificationsRead?.(notificationItems);
+  };
+
+  const saveAvatar = async () => {
+    const nextAvatarUrl = avatarDraft.trim();
+    if (nextAvatarUrl && !isValidProfileImageUrl(nextAvatarUrl)) {
+      setAvatarMessage("画像URLは http(s) または data:image 形式で入力してください。");
+      return;
+    }
+
+    setAvatarSaving(true);
+    setAvatarMessage("プロフィール画像を保存しています。");
+    try {
+      await onUpdateAvatar?.(nextAvatarUrl);
+      setAvatarMessage(nextAvatarUrl ? "プロフィール画像を保存しました。" : "プロフィール画像を削除しました。");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "プロフィール画像の保存に失敗しました。";
+      setAvatarMessage(message);
+    } finally {
+      setAvatarSaving(false);
+    }
   };
 
   return (
@@ -171,7 +200,7 @@ export function TopHeader({
               <CircleHelp size={18} />
             </button>
             <button className="flex h-11 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 shadow-sm hover:border-[#D6001C]" type="button" onClick={() => selectPanel("account")} aria-label="アカウントメニュー">
-              <div className="grid size-8 place-items-center rounded-full bg-slate-200 text-sm font-bold text-slate-700">{user.initial}</div>
+              <AvatarCircle user={user} sizeClassName="size-8" />
               <div className="text-left text-sm">
                 <p className="font-semibold leading-4">{user.name}</p>
                 <p className="text-[11px] text-slate-500">{user.position} / {user.role}</p>
@@ -255,7 +284,7 @@ export function TopHeader({
             {openPanel === "account" ? (
               <HeaderPanel className="right-[62px]">
                 <div className="flex items-center gap-3">
-                  <div className="grid size-10 place-items-center rounded-full bg-slate-200 font-bold">{user.initial}</div>
+                  <AvatarCircle user={user} sizeClassName="size-10" />
                   <div>
                     <h3 className="font-bold">{user.name}</h3>
                     <p className="text-xs text-slate-500">{user.email}</p>
@@ -265,6 +294,26 @@ export function TopHeader({
                   <AccountRow icon={<UserRound size={16} />} label="所属" value={`${user.department} / ${user.position}`} />
                   <AccountRow icon={<ShieldCheck size={16} />} label="権限" value={user.role} />
                   <AccountRow icon={<CheckCircle2 size={16} />} label="ログイン" value={user.authSource === "supabase" ? "Supabase Auth" : "デモ"} />
+                </div>
+                <div className="mt-4 rounded-lg bg-slate-50 p-3">
+                  <label className="grid gap-2 text-xs font-bold text-slate-600">
+                    プロフィール画像URL
+                    <input
+                      className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs outline-none focus:border-[#D6001C]"
+                      placeholder="https://..."
+                      value={avatarDraft}
+                      onChange={(event) => setAvatarDraft(event.currentTarget.value)}
+                    />
+                  </label>
+                  <button
+                    className="mt-2 h-9 w-full rounded-lg bg-slate-900 px-3 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                    type="button"
+                    disabled={avatarSaving || avatarDraft.trim() === (user.avatarUrl ?? "")}
+                    onClick={() => void saveAvatar()}
+                  >
+                    {avatarSaving ? "保存中" : "画像を保存"}
+                  </button>
+                  {avatarMessage ? <p className="mt-2 text-xs font-bold text-slate-500">{avatarMessage}</p> : null}
                 </div>
                 <div className="mt-4 grid gap-2">
                   <button className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-bold text-slate-700" type="button" onClick={() => navigate("settings")}><Settings size={15} />アカウント設定</button>
@@ -301,12 +350,35 @@ export function TopHeader({
   );
 }
 
+function AvatarCircle({ user, sizeClassName }: { user: AuthUser; sizeClassName: string }) {
+  return (
+    <div className={`grid shrink-0 place-items-center overflow-hidden rounded-full bg-slate-200 text-sm font-bold text-slate-700 ring-1 ring-slate-200 ${sizeClassName}`}>
+      {user.avatarUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img className="size-full object-cover" src={user.avatarUrl} alt={user.name} />
+      ) : (
+        user.initial
+      )}
+    </div>
+  );
+}
+
 function HeaderPanel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <div className={`absolute top-12 z-30 w-[330px] rounded-xl border border-slate-200 bg-white p-4 shadow-xl ${className}`}>{children}</div>;
 }
 
 function isNotificationRead(notification: AppNotificationEntry, readNotificationIds: string[]) {
   return Boolean(notification.readAt) || readNotificationIds.includes(notification.id);
+}
+
+function isValidProfileImageUrl(value: string) {
+  if (value.startsWith("data:image/")) return true;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:";
+  } catch {
+    return false;
+  }
 }
 
 function HelpItem({ title, body }: { title: string; body: string }) {
