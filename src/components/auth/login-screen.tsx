@@ -293,17 +293,20 @@ export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) 
 
         <section className="hidden bg-[#080F14] p-8 text-white lg:flex lg:flex-col lg:justify-between">
           <div className="max-w-2xl">
-            <p className="text-sm font-bold text-red-300">Work OS / MVP</p>
-            <h2 className="mt-4 text-4xl font-black tracking-tight">チームの課題、タスク、承認を権限つきで管理</h2>
-            <p className="mt-4 max-w-xl text-sm leading-7 text-slate-300">
-              ログインユーザーごとに部門、役職、権限ランクを持たせる想定です。実装時はSupabase Authとメンバーテーブルを紐づけます。
+            <div className="inline-flex rounded-lg bg-white px-5 py-4 shadow-2xl shadow-black/30">
+              <img className="h-14 w-auto" src="/brand/tauros-logo.png" alt="TAUROS JAPAN" />
+            </div>
+            <p className="mt-8 text-sm font-bold uppercase tracking-[0.2em] text-red-300">TAUROS TEAMOS</p>
+            <h2 className="mt-4 max-w-3xl text-5xl font-black leading-tight tracking-tight">現場を動かす。判断を止めない。</h2>
+            <p className="mt-5 max-w-xl text-base leading-8 text-slate-300">
+              課題、タスク、承認、権限をひとつに。チームの進捗と意思決定を、迷わず前へ進めるWork OS。
             </p>
           </div>
 
           <div className="grid gap-4 xl:grid-cols-3">
-            <LoginFeature icon={<Users size={20} />} title="チーム共有" body="部門・役職・権限ランクをユーザーに紐づけます。" />
-            <LoginFeature icon={<ShieldCheck size={20} />} title="承認制御" body="最終承認者、編集者、閲覧者の操作範囲を分けます。" />
-            <LoginFeature icon={<CheckCircle2 size={20} />} title="操作ログ" body="登録、承認、差し戻し、削除を監査ログに残します。" />
+            <LoginFeature icon={<Users size={20} />} title="見える化" body="課題とタスクを、チーム全体で共有。" />
+            <LoginFeature icon={<ShieldCheck size={20} />} title="権限管理" body="必要な人だけが、必要な操作を実行。" />
+            <LoginFeature icon={<CheckCircle2 size={20} />} title="承認フロー" body="確認、決裁、履歴を一本化。" />
           </div>
         </section>
       </div>
