@@ -16,6 +16,28 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## TeamOS Notes
+
+TaurosAIの土台ページを追加しています。
+
+- TeamOS内メニュー: `TaurosAI`
+- URL入口: [http://localhost:3000/tauros-ai](http://localhost:3000/tauros-ai)
+- 内部キー: `tauros_ai`
+- 役割: 社内ナレッジ、業務ルール、マニュアル、FAQへ質問するチャット型AIアシスタント
+- ナレッジ管理: Owner / Adminのみ表示
+
+設計メモ:
+
+```text
+docs/tauros-ai-knowledge-design.md
+```
+
+Supabase SQL:
+
+```text
+supabase/add_tauros_ai_knowledge_20260606.sql
+```
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

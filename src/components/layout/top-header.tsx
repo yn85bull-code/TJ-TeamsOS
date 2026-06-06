@@ -14,6 +14,7 @@ const descriptions: Record<string, string> = {
   tasks: "担当タスクの進捗、ToDoメモ、承認申請の状態を確認します。",
   approvals: "承認待ちの申請を確認し、コメント付きで承認・差し戻しします。",
   teams: "部門、役職、メンバー、権限ランクを管理します。",
+  tauros_ai: "社内ナレッジ、業務ルール、マニュアル、FAQをチャットで確認します。",
   ai: "Gmail、LINE、サイボウズ、AI提案候補を人間承認前に確認します。",
   reports: "将来の出力用レポート領域です。現状はダッシュボード集計を優先します。",
   logs: "誰が、いつ、何を変更したかを監査ログとして確認します。",
@@ -26,6 +27,7 @@ const navLabels: Record<string, string> = {
   tasks: "Tasks",
   approvals: "Approvals",
   teams: "Teams",
+  tauros_ai: "TaurosAI",
   ai: "AI Suggestions",
   reports: "Reports",
   logs: "Activity Logs",
@@ -35,6 +37,8 @@ const navLabels: Record<string, string> = {
 const searchIndex = [
   { title: "期限超過タスク", subtitle: "タスク一覧で期限超過を確認", target: "tasks" },
   { title: "承認待ち申請", subtitle: "承認ページで最終確認", target: "approvals" },
+  { title: "TaurosAI", subtitle: "社内ナレッジ、FAQ、業務ルールを質問", target: "tauros_ai" },
+  { title: "ナレッジ管理", subtitle: "マニュアル、FAQ、業務ルールの登録", target: "tauros_ai" },
   { title: "AI提案候補", subtitle: "Gmail / LINE / サイボウズ連携候補", target: "ai" },
   { title: "課題一覧", subtitle: "課題からタスク化・承認申請へ進める", target: "issues" },
   { title: "権限設定", subtitle: "権限ランクとメンバー権限を管理", target: "settings" },
@@ -43,6 +47,7 @@ const searchIndex = [
 
 const demoHeaderNotifications: AppNotificationEntry[] = [
   { id: "h1", title: "研修ルール策定の承認待ち", detail: "山田花子さんから申請", time: "2026/06/03 09:20", target: "approvals" },
+  { id: "h-ai-knowledge", title: "TaurosAIナレッジ登録準備", detail: "社内FAQと業務ルールを登録できます", time: "2026/06/06 16:40", target: "tauros_ai" },
   { id: "h2", title: "メールからタスク候補", detail: "AI Secretaryが候補を作成", time: "2026/06/03 10:40", target: "ai" },
   { id: "h3", title: "進捗報告が更新されました", detail: "営業研修資料の更新", time: "2026/06/03 11:10", target: "tasks" },
 ];
@@ -267,7 +272,7 @@ export function TopHeader({
         </div>
       </div>
       <nav className="mt-4 flex gap-2 overflow-x-auto pb-1 lg:hidden" aria-label="Mobile navigation">
-        {navItems.map((item) => {
+        {navItems.filter((item) => canAccessNavItem(appRole, item.key)).map((item) => {
           const Icon = item.icon;
           const active = item.key === activeKey;
           const label = navLabels[item.key] ?? item.label;

@@ -1,14 +1,14 @@
 "use client";
 
 import { PanelCard, PriorityBadge, ProgressBar, StatusBadge } from "@/components/ui/dashboard-ui";
-import { can } from "@/lib/domain/permissions";
+import { can, getTaurosAiPermissionFlags } from "@/lib/domain/permissions";
 import { normalizePriority, sortByPriorityAndDueDate } from "@/lib/domain/priority";
 import { departmentProgress, kanbanColumns, myTasks, pageDemo, TaskPriority, TaskStatus, TaskSummary } from "@/lib/dashboard-demo-data";
 import { loadLocalTaskRecords, saveLocalTaskRecords, saveTaskRecord } from "@/lib/tasks/task-record-store";
 import { DEFAULT_DEPARTMENTS, normalizeDepartmentList } from "@/lib/workspace/department-store";
 import { OPERATIONAL_ROLE_OPTIONS, TeamProfileEntry, demoUsersToProfiles, getRoleLabel, inviteTeamUser, loadTeamProfilesFromSupabase, updateProfileDepartmentAndPositionInSupabase, updateProfileRoleInSupabase } from "@/lib/workspace/profile-store";
 import { AppRole } from "@/types/database";
-import { Bot, Building2, ClipboardList, Inbox, ListChecks, Search, ShieldCheck, Trash2, Users } from "lucide-react";
+import { BookOpen, Bot, Building2, ClipboardList, Clock, Database, FileText, Inbox, ListChecks, LockKeyhole, Search, Send, ShieldCheck, Trash2, Upload, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type NavigateHandler = {
@@ -2150,6 +2150,455 @@ export function TeamsPage() {
       </div>
     </PageFrame>
   );
+}
+
+type TaurosKnowledgeItem = {
+  id: string;
+  title: string;
+  category: string;
+  description: string;
+  content: string;
+  visibilityType: "company" | "owner_only" | "admin" | "manager" | "department" | "role";
+  allowedRoles: AppRole[];
+  allowedDepartments: string[];
+  updatedAt: string;
+  fileName?: string;
+};
+
+type TaurosAiMessage = {
+  id: string;
+  sender: "ai" | "user";
+  text: string;
+  referencedKnowledgeIds?: string[];
+};
+
+const taurosAiCategories = ["全社", "営業", "買取", "販売", "書類", "整備", "陸送", "人事", "経理", "総務", "システム", "規程", "マニュアル", "FAQ"];
+
+const taurosAiFaqs = [
+  "納車許可の条件は？",
+  "MOTA案件の対応フローは？",
+  "買取キャンセルの処理方法は？",
+  "入社時に必要なものは？",
+  "AA出品の流れは？",
+  "書類確認の手順は？",
+];
+
+const taurosAiSeedKnowledge: TaurosKnowledgeItem[] = [
+  {
+    id: "kn-001",
+    title: "納車管理マニュアル",
+    category: "販売",
+    description: "納車許可、書類確認、入金確認の基本条件。",
+    content: "納車許可は、入金確認、必要書類の回収、車両状態の最終確認、担当責任者の確認が揃ってから行います。",
+    visibilityType: "company",
+    allowedRoles: ["owner", "admin", "department_manager", "member"],
+    allowedDepartments: [],
+    updatedAt: "2026/06/06",
+    fileName: "納車管理マニュアル.pdf",
+  },
+  {
+    id: "kn-002",
+    title: "MOTA案件対応フロー",
+    category: "営業",
+    description: "MOTA流入後の初動、架電、査定、追客の手順。",
+    content: "MOTA案件は初動連絡、査定日程調整、査定結果入力、追客メモ更新の順に対応します。対応漏れ防止のため、進捗をTeamOSに残します。",
+    visibilityType: "department",
+    allowedRoles: ["owner", "admin", "department_manager", "member"],
+    allowedDepartments: ["営業部", "営業本部"],
+    updatedAt: "2026/06/06",
+    fileName: "MOTA対応フロー.docx",
+  },
+  {
+    id: "kn-003",
+    title: "買取キャンセル処理FAQ",
+    category: "買取",
+    description: "キャンセル時の確認、返金、社内共有の流れ。",
+    content: "買取キャンセル時は、キャンセル理由、契約状況、入出金の有無を確認し、責任者へ共有します。返金や書類返却がある場合は履歴を残します。",
+    visibilityType: "manager",
+    allowedRoles: ["owner", "admin", "department_manager"],
+    allowedDepartments: ["買取部", "買取販売営業"],
+    updatedAt: "2026/06/06",
+  },
+  {
+    id: "kn-004",
+    title: "入社手続きFAQ",
+    category: "人事",
+    description: "入社時に必要な書類、アカウント準備、初日対応。",
+    content: "入社時は本人確認書類、雇用契約、口座情報、緊急連絡先、社内アカウント、貸与物の確認を行います。",
+    visibilityType: "company",
+    allowedRoles: ["owner", "admin", "department_manager", "member"],
+    allowedDepartments: [],
+    updatedAt: "2026/06/06",
+  },
+  {
+    id: "kn-005",
+    title: "経理・支払い確認ルール",
+    category: "経理",
+    description: "支払い、請求、経理確認に関する管理者向けルール。",
+    content: "経理・支払い情報はAdmin以上が確認します。Memberには回答せず、必要な場合は上長または管理者へ確認します。",
+    visibilityType: "admin",
+    allowedRoles: ["owner", "admin"],
+    allowedDepartments: ["経理"],
+    updatedAt: "2026/06/06",
+  },
+];
+
+export function TaurosAiPage({
+  appRole = "member",
+  currentUserDepartment = "営業部",
+}: {
+  appRole?: AppRole;
+  currentUserDepartment?: string;
+  currentUserName?: string;
+}) {
+  const flags = getTaurosAiPermissionFlags(appRole);
+  const localIdCounterRef = useRef(0);
+  const [activeTab, setActiveTab] = useState<"chat" | "knowledge">("chat");
+  const [activeCategory, setActiveCategory] = useState("全社");
+  const [question, setQuestion] = useState("");
+  const [messages, setMessages] = useState<TaurosAiMessage[]>([
+    {
+      id: "welcome",
+      sender: "ai",
+      text: "こんにちは。TaurosAIです。社内ルール、業務フロー、マニュアルについて質問してください。",
+      referencedKnowledgeIds: ["kn-001", "kn-002"],
+    },
+  ]);
+  const [knowledgeItems, setKnowledgeItems] = useState<TaurosKnowledgeItem[]>(taurosAiSeedKnowledge);
+  const [draftKnowledge, setDraftKnowledge] = useState({
+    title: "",
+    category: "FAQ",
+    description: "",
+    content: "",
+    visibilityType: "company" as TaurosKnowledgeItem["visibilityType"],
+  });
+
+  const visibleKnowledge = knowledgeItems.filter((item) =>
+    canViewTaurosKnowledge(item, appRole, currentUserDepartment),
+  );
+  const filteredKnowledge = visibleKnowledge.filter((item) =>
+    activeCategory === "全社" ? true : item.category === activeCategory,
+  );
+  const lastReferencedIds = [...messages].reverse().find((message) => message.referencedKnowledgeIds?.length)?.referencedKnowledgeIds ?? [];
+  const referencedKnowledge = visibleKnowledge.filter((item) => lastReferencedIds.includes(item.id));
+  const canManageKnowledge = flags.can_manage_tauros_ai_knowledge;
+  const canDeleteKnowledge = flags.can_delete_knowledge;
+  const recentQuestions = messages.filter((message) => message.sender === "user").slice(-5).reverse();
+
+  const askTaurosAi = (text: string) => {
+    const normalizedQuestion = text.trim();
+    if (!normalizedQuestion) return;
+
+    const matchedKnowledge = findTaurosKnowledgeMatches(normalizedQuestion, filteredKnowledge);
+    const blockedSensitive = isTaurosAiSensitiveQuestion(normalizedQuestion) && !can(appRole, "knowledge", "manage");
+    const answer = blockedSensitive
+      ? "この情報は現在の権限では閲覧できません。必要な場合は上長または管理者へ確認してください。"
+      : matchedKnowledge.length
+        ? `この回答は、【${matchedKnowledge[0].title}】をもとに回答しています。\n\n${matchedKnowledge[0].content}\n\n本格実装では、登録済みナレッジを検索して参照元付きで回答します。`
+        : "登録されているナレッジ内では確認できません。管理者へナレッジ追加を依頼してください。";
+
+    localIdCounterRef.current += 1;
+    const messageIdBase = localIdCounterRef.current;
+    const userMessage: TaurosAiMessage = {
+      id: `user-local-${messageIdBase}`,
+      sender: "user",
+      text: normalizedQuestion,
+    };
+    const aiMessage: TaurosAiMessage = {
+      id: `ai-local-${messageIdBase}`,
+      sender: "ai",
+      text: answer,
+      referencedKnowledgeIds: matchedKnowledge.map((item) => item.id),
+    };
+
+    setMessages((items) => [...items, userMessage, aiMessage]);
+    setQuestion("");
+  };
+
+  const addDraftKnowledge = () => {
+    if (!canManageKnowledge || !draftKnowledge.title.trim() || !draftKnowledge.content.trim()) return;
+    localIdCounterRef.current += 1;
+    const newKnowledge: TaurosKnowledgeItem = {
+      id: `kn-local-${localIdCounterRef.current}`,
+      title: draftKnowledge.title.trim(),
+      category: draftKnowledge.category,
+      description: draftKnowledge.description.trim() || "説明未設定",
+      content: draftKnowledge.content.trim(),
+      visibilityType: draftKnowledge.visibilityType,
+      allowedRoles: getDefaultAllowedRoles(draftKnowledge.visibilityType),
+      allowedDepartments: draftKnowledge.visibilityType === "department" ? [currentUserDepartment] : [],
+      updatedAt: "2026/06/06",
+    };
+    setKnowledgeItems((items) => [newKnowledge, ...items]);
+    setDraftKnowledge({ title: "", category: "FAQ", description: "", content: "", visibilityType: "company" });
+  };
+
+  return (
+    <PageFrame title="TaurosAI" lead="社内ナレッジ、業務ルール、マニュアル、FAQをAIに質問できる社内アシスタントです。">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex rounded-lg bg-slate-100 p-1">
+          <button className={`h-10 rounded-md px-4 text-sm font-black ${activeTab === "chat" ? "bg-white text-[#D6001C] shadow-sm" : "text-slate-600"}`} type="button" onClick={() => setActiveTab("chat")}>
+            チャット
+          </button>
+          {canManageKnowledge ? (
+            <button className={`h-10 rounded-md px-4 text-sm font-black ${activeTab === "knowledge" ? "bg-white text-[#D6001C] shadow-sm" : "text-slate-600"}`} type="button" onClick={() => setActiveTab("knowledge")}>
+              ナレッジ管理
+            </button>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600">
+          <LockKeyhole size={15} className="text-[#D6001C]" />
+          {canManageKnowledge ? "Admin以上: ナレッジ管理可" : "閲覧・質問のみ"}
+        </div>
+      </div>
+
+      {activeTab === "chat" ? (
+        <section className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)_300px]">
+          <PanelCard className="p-4">
+            <div className="flex items-center gap-2">
+              <BookOpen size={18} className="text-[#D6001C]" />
+              <h3 className="font-black">カテゴリ</h3>
+            </div>
+            <div className="mt-4 grid gap-2">
+              {taurosAiCategories.map((category) => {
+                const active = activeCategory === category;
+                return (
+                  <button key={category} className={`flex h-9 items-center justify-between rounded-lg px-3 text-sm font-bold ${active ? "bg-[#D6001C] text-white" : "bg-slate-50 text-slate-700 hover:bg-slate-100"}`} type="button" onClick={() => setActiveCategory(category)}>
+                    {category}
+                    <span className={`text-[11px] ${active ? "text-white/80" : "text-slate-400"}`}>
+                      {category === "全社" ? visibleKnowledge.length : visibleKnowledge.filter((item) => item.category === category).length}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-6 border-t border-slate-100 pt-4">
+              <div className="flex items-center gap-2">
+                <Clock size={16} className="text-slate-500" />
+                <h4 className="text-sm font-black">最近の質問</h4>
+              </div>
+              <div className="mt-3 grid gap-2">
+                {recentQuestions.length ? recentQuestions.map((message) => (
+                  <button key={message.id} className="rounded-lg bg-slate-50 px-3 py-2 text-left text-xs font-bold text-slate-600 hover:bg-slate-100" type="button" onClick={() => setQuestion(message.text)}>
+                    {message.text}
+                  </button>
+                )) : (
+                  <p className="rounded-lg bg-slate-50 px-3 py-3 text-xs font-bold text-slate-500">まだ質問履歴はありません。</p>
+                )}
+              </div>
+            </div>
+          </PanelCard>
+
+          <PanelCard className="flex min-h-[620px] flex-col p-0">
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+              <div className="flex items-center gap-3">
+                <div className="grid size-10 place-items-center rounded-xl bg-[#D6001C] text-white">
+                  <Bot size={20} />
+                </div>
+                <div>
+                  <h3 className="font-black">TaurosAI Chat</h3>
+                  <p className="text-xs font-bold text-slate-500">回答範囲: {currentUserDepartment} / {getRoleDisplayLabel(appRole)}</p>
+                </div>
+              </div>
+              <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">MVP土台</span>
+            </div>
+
+            <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
+              {messages.map((message) => (
+                <div key={message.id} className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}>
+                  <div className={`max-w-[78%] rounded-lg px-4 py-3 text-sm leading-6 ${message.sender === "user" ? "bg-[#D6001C] text-white" : "bg-slate-50 text-slate-800"}`}>
+                    {message.text.split("\n").map((line) => (
+                      <p key={`${message.id}-${line}`}>{line}</p>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="border-t border-slate-100 p-4">
+              <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+                {taurosAiFaqs.map((faq) => (
+                  <button key={faq} className="h-9 shrink-0 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C]" type="button" onClick={() => askTaurosAi(faq)}>
+                    {faq}
+                  </button>
+                ))}
+              </div>
+              <div className="grid gap-2 md:grid-cols-[1fr_96px]">
+                <textarea className="min-h-16 resize-none rounded-lg border border-slate-200 px-3 py-3 text-sm outline-none focus:border-[#D6001C]" placeholder="社内ナレッジについて質問してください..." value={question} onChange={(event) => setQuestion(event.target.value)} />
+                <button className="inline-flex h-16 items-center justify-center gap-2 rounded-lg bg-[#D6001C] px-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300" type="button" disabled={!question.trim()} onClick={() => askTaurosAi(question)}>
+                  <Send size={16} />
+                  送信
+                </button>
+              </div>
+            </div>
+          </PanelCard>
+
+          <PanelCard className="p-4">
+            <div className="flex items-center gap-2">
+              <FileText size={18} className="text-[#D6001C]" />
+              <h3 className="font-black">参照元</h3>
+            </div>
+            <div className="mt-4 grid gap-3">
+              {referencedKnowledge.length ? referencedKnowledge.map((item) => (
+                <div key={item.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
+                  <p className="text-sm font-black text-slate-900">{item.title}</p>
+                  <p className="mt-1 text-xs font-bold text-slate-500">{item.category} / 更新日 {item.updatedAt}</p>
+                  {item.fileName ? <p className="mt-2 text-xs text-slate-500">参照ファイル: {item.fileName}</p> : null}
+                </div>
+              )) : (
+                <p className="rounded-lg bg-slate-50 px-3 py-3 text-xs font-bold text-slate-500">質問後に参照元が表示されます。</p>
+              )}
+            </div>
+
+            <div className="mt-6 border-t border-slate-100 pt-4">
+              <div className="flex items-center gap-2">
+                <Database size={17} className="text-slate-500" />
+                <h4 className="text-sm font-black">関連ナレッジ</h4>
+              </div>
+              <div className="mt-3 grid gap-2">
+                {filteredKnowledge.slice(0, 5).map((item) => (
+                  <div key={`related-${item.id}`} className="rounded-lg border border-slate-100 px-3 py-2">
+                    <p className="text-xs font-black text-slate-800">{item.title}</p>
+                    <p className="mt-1 text-[11px] text-slate-500">{item.description}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </PanelCard>
+        </section>
+      ) : (
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
+          <PanelCard className="p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="font-black">ナレッジ一覧</h3>
+                <p className="mt-1 text-sm text-slate-500">登録済みの社内ナレッジを管理します。</p>
+              </div>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">{knowledgeItems.length}件</span>
+            </div>
+            <div className="mt-5 overflow-x-auto">
+              <table className="w-full min-w-[760px] text-left text-sm">
+                <thead className="border-y border-slate-200 bg-slate-50 text-xs text-slate-500">
+                  <tr>
+                    <th className="p-3">タイトル</th>
+                    <th className="p-3">カテゴリ</th>
+                    <th className="p-3">公開範囲</th>
+                    <th className="p-3">更新日</th>
+                    <th className="p-3">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {knowledgeItems.map((item) => (
+                    <tr key={item.id} className="border-b border-slate-100">
+                      <td className="p-3">
+                        <p className="font-black text-slate-950">{item.title}</p>
+                        <p className="mt-1 text-xs text-slate-500">{item.description}</p>
+                      </td>
+                      <td className="p-3 font-bold text-slate-700">{item.category}</td>
+                      <td className="p-3">
+                        <span className="rounded bg-slate-100 px-2 py-1 text-xs font-bold text-slate-600">{getKnowledgeVisibilityLabel(item.visibilityType)}</span>
+                      </td>
+                      <td className="p-3 text-xs font-bold text-slate-500">{item.updatedAt}</td>
+                      <td className="p-3">
+                        <div className="flex gap-2">
+                          <button className="h-9 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700" type="button">編集</button>
+                          <button className="h-9 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 disabled:cursor-not-allowed disabled:text-slate-300" type="button" disabled={!canDeleteKnowledge} onClick={() => setKnowledgeItems((items) => items.filter((current) => current.id !== item.id))}>
+                            削除
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </PanelCard>
+
+          <PanelCard className="p-5">
+            <div className="flex items-center gap-2">
+              <Upload size={18} className="text-[#D6001C]" />
+              <h3 className="font-black">ナレッジ登録</h3>
+            </div>
+            <div className="mt-4 grid gap-3">
+              <input className="h-10 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-[#D6001C]" placeholder="タイトル" value={draftKnowledge.title} onChange={(event) => setDraftKnowledge((draft) => ({ ...draft, title: event.target.value }))} />
+              <select className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-bold text-slate-700 outline-none focus:border-[#D6001C]" value={draftKnowledge.category} onChange={(event) => setDraftKnowledge((draft) => ({ ...draft, category: event.target.value }))}>
+                {taurosAiCategories.filter((category) => category !== "全社").map((category) => (
+                  <option key={`knowledge-category-${category}`} value={category}>{category}</option>
+                ))}
+              </select>
+              <select className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-bold text-slate-700 outline-none focus:border-[#D6001C]" value={draftKnowledge.visibilityType} onChange={(event) => setDraftKnowledge((draft) => ({ ...draft, visibilityType: event.target.value as TaurosKnowledgeItem["visibilityType"] }))}>
+                <option value="company">全社公開</option>
+                <option value="admin">Admin以上</option>
+                <option value="manager">Manager以上</option>
+                <option value="department">部門限定</option>
+              </select>
+              <input className="h-10 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-[#D6001C]" placeholder="説明文" value={draftKnowledge.description} onChange={(event) => setDraftKnowledge((draft) => ({ ...draft, description: event.target.value }))} />
+              <textarea className="min-h-32 rounded-lg border border-slate-200 px-3 py-3 text-sm outline-none focus:border-[#D6001C]" placeholder="本文テキスト" value={draftKnowledge.content} onChange={(event) => setDraftKnowledge((draft) => ({ ...draft, content: event.target.value }))} />
+              <label className="grid min-h-24 place-items-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 text-center text-xs font-bold text-slate-500">
+                PDF / Excel / CSV / Word / テキストファイル
+                <input className="hidden" type="file" />
+              </label>
+              <button className="h-10 rounded-lg bg-[#D6001C] px-4 text-sm font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300" type="button" disabled={!draftKnowledge.title.trim() || !draftKnowledge.content.trim()} onClick={addDraftKnowledge}>
+                下書き追加
+              </button>
+            </div>
+          </PanelCard>
+        </section>
+      )}
+    </PageFrame>
+  );
+}
+
+function canViewTaurosKnowledge(item: TaurosKnowledgeItem, appRole: AppRole, currentUserDepartment: string) {
+  const normalizedRole = appRole === "executive" || appRole === "team_manager" ? "department_manager" : appRole === "viewer" ? "member" : appRole;
+  if (normalizedRole === "owner") return true;
+  if (item.visibilityType === "owner_only") return false;
+  if (normalizedRole === "admin") return true;
+  if (item.visibilityType === "company") return true;
+  if (item.visibilityType === "manager") return normalizedRole === "department_manager" && (item.allowedDepartments.length === 0 || item.allowedDepartments.includes(currentUserDepartment));
+  if (item.visibilityType === "department") return item.allowedDepartments.includes(currentUserDepartment) && item.allowedRoles.includes(normalizedRole);
+  if (item.visibilityType === "role") return item.allowedRoles.includes(normalizedRole);
+  return false;
+}
+
+function findTaurosKnowledgeMatches(question: string, knowledgeItems: TaurosKnowledgeItem[]) {
+  const normalizedQuestion = question.toLowerCase();
+  const keywordMatches = knowledgeItems.filter((item) =>
+    `${item.title} ${item.category} ${item.description} ${item.content}`.toLowerCase().includes(normalizedQuestion)
+      || normalizedQuestion.split(/\s+/).some((keyword) => keyword && `${item.title} ${item.description} ${item.content}`.toLowerCase().includes(keyword)),
+  );
+
+  if (keywordMatches.length) return keywordMatches.slice(0, 3);
+  if (question.includes("納車")) return knowledgeItems.filter((item) => item.title.includes("納車")).slice(0, 3);
+  if (question.toLowerCase().includes("mota")) return knowledgeItems.filter((item) => item.title.includes("MOTA")).slice(0, 3);
+  if (question.includes("キャンセル")) return knowledgeItems.filter((item) => item.title.includes("キャンセル")).slice(0, 3);
+  if (question.includes("入社")) return knowledgeItems.filter((item) => item.title.includes("入社")).slice(0, 3);
+  return [];
+}
+
+function isTaurosAiSensitiveQuestion(question: string) {
+  return ["経理", "支払い", "請求", "人事情報", "採用", "役員", "経営資料", "KPI"].some((keyword) => question.includes(keyword));
+}
+
+function getDefaultAllowedRoles(visibilityType: TaurosKnowledgeItem["visibilityType"]): AppRole[] {
+  if (visibilityType === "admin") return ["owner", "admin"];
+  if (visibilityType === "manager") return ["owner", "admin", "department_manager"];
+  return ["owner", "admin", "department_manager", "member"];
+}
+
+function getKnowledgeVisibilityLabel(visibilityType: TaurosKnowledgeItem["visibilityType"]) {
+  if (visibilityType === "admin") return "Admin以上";
+  if (visibilityType === "manager") return "Manager以上";
+  if (visibilityType === "department") return "部門限定";
+  return "全社公開";
+}
+
+function getRoleDisplayLabel(role: AppRole) {
+  if (role === "owner") return "Owner";
+  if (role === "admin") return "Admin";
+  if (role === "department_manager" || role === "team_manager" || role === "executive") return "Manager";
+  return "Member";
 }
 
 export function AiSuggestionsPage() {

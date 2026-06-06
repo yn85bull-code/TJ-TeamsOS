@@ -22,6 +22,7 @@ import {
   TaskRecord,
   TasksPage,
   TeamsPage,
+  TaurosAiPage,
 } from "@/components/pages/workspace-pages";
 import { AuthUser, demoUsers } from "@/lib/auth-demo-data";
 import { navItems } from "@/lib/dashboard-demo-data";
@@ -54,9 +55,9 @@ type NotificationRecipient = {
   name: string;
 };
 
-export default function Home() {
+export default function Home({ initialActiveKey = "dashboard" }: { initialActiveKey?: string } = {}) {
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
-  const [activeKey, setActiveKey] = useState("dashboard");
+  const [activeKey, setActiveKey] = useState(initialActiveKey);
   const [createOpen, setCreateOpen] = useState(false);
   const [createNotice, setCreateNotice] = useState<{ label: string; registeredAt: string } | null>(null);
   const [approvalRequests, setApprovalRequests] = useState<ApprovalRequestEntry[]>([]);
@@ -531,7 +532,8 @@ export default function Home() {
   };
   const login = (user: AuthUser) => {
     setCurrentUser(user);
-    setActiveKey("dashboard");
+    const loginRole = getEffectiveAppRole(user);
+    setActiveKey(canAccessNavItem(loginRole, initialActiveKey) ? initialActiveKey : "dashboard");
     setCreateNotice(null);
     setCreateOpen(false);
   };
@@ -720,6 +722,8 @@ function ActivePage({
       return <ApprovalsPage onNavigate={onNavigate} approvalRequests={approvalRequests} resolvedApprovalIds={resolvedApprovalIds} onResolveApproval={onResolveApproval} onReviewApproval={onReviewApproval} onSendBackTask={onSendBackTask} approvalHistory={approvalHistory} onRecordApproval={onRecordApproval} currentUserName={currentUserName} currentUserId={currentUserId} appRole={appRole} />;
     case "teams":
       return <TeamsPage />;
+    case "tauros_ai":
+      return <TaurosAiPage appRole={appRole} currentUserDepartment={currentUserDepartment} currentUserName={currentUserName} />;
     case "ai":
       return <AiSuggestionsPage />;
     case "reports":

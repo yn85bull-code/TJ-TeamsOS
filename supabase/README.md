@@ -64,6 +64,15 @@ supabase/apply_permission_model_20260606.sql
 
 このSQLは、Memberを自分関連データのみ、Managerを自部門・自拠点の閲覧と確認のみ、Owner / Adminを最終承認可能に揃えます。
 
+TaurosAIとナレッジ機能の土台を作る場合は、次のSQLも実行します。
+
+```text
+supabase/add_tauros_ai_knowledge_20260606.sql
+```
+
+このSQLは、`knowledge_items`、`knowledge_files`、`knowledge_chat_logs`、`knowledge_faq_candidates` と非公開Storage Bucket `tauros-ai-knowledge` を作成します。
+TaurosAI自体は全ロールで利用可能、ナレッジ管理はOwner / Adminのみ利用可能にします。
+
 ## 5. ローカル確認
 
 環境変数を入れた後、サーバーを再起動します。

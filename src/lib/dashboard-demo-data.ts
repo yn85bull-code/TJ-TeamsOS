@@ -66,6 +66,7 @@ export const navItems: NavItem[] = [
   { key: "tasks", label: "Tasks", icon: CheckCircle2 },
   { key: "approvals", label: "Approvals", icon: ShieldCheck, badge: 5 },
   { key: "teams", label: "Teams", icon: Users },
+  { key: "tauros_ai", label: "TaurosAI", icon: Bot },
   { key: "ai", label: "AI Suggestions", icon: Sparkles, badge: 8 },
   { key: "reports", label: "Reports", icon: PieChart },
   { key: "logs", label: "Activity Logs", icon: Activity },

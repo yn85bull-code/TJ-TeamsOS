@@ -1,7 +1,7 @@
 import { AppRole } from "@/types/database";
 
 export type PermissionAction = "create" | "read" | "update" | "delete" | "approve" | "manage";
-export type PermissionResource = "issues" | "tasks" | "approvals" | "teams" | "settings" | "ai_suggestions" | "reports" | "logs";
+export type PermissionResource = "issues" | "tasks" | "approvals" | "teams" | "settings" | "ai_suggestions" | "tauros_ai" | "knowledge" | "reports" | "logs";
 
 const roleRank: Record<AppRole, number> = {
   owner: 100,
@@ -16,6 +16,7 @@ const roleRank: Record<AppRole, number> = {
 const approvalRoles: AppRole[] = ["owner", "admin"];
 const managementRoles: AppRole[] = ["owner", "admin"];
 const deleteRoles: AppRole[] = ["owner"];
+const taurosAiManagementRoles: AppRole[] = ["owner", "admin"];
 
 export function normalizeAppRole(role: AppRole): AppRole {
   if (role === "executive" || role === "team_manager") return "department_manager";
@@ -26,6 +27,12 @@ export function normalizeAppRole(role: AppRole): AppRole {
 export function can(role: AppRole, resource: PermissionResource, action: PermissionAction) {
   const normalizedRole = normalizeAppRole(role);
 
+  if (resource === "tauros_ai" && action === "read") return true;
+  if (resource === "knowledge") {
+    if (action === "read") return roleRank[normalizedRole] >= roleRank.member;
+    if (action === "create" || action === "update" || action === "manage") return taurosAiManagementRoles.includes(normalizedRole);
+    if (action === "delete") return normalizedRole === "owner";
+  }
   if (action === "read") return roleRank[normalizedRole] >= roleRank.member;
   if (action === "approve") return resource === "approvals" && approvalRoles.includes(normalizedRole);
   if (action === "manage") return managementRoles.includes(normalizedRole);
@@ -37,13 +44,31 @@ export function can(role: AppRole, resource: PermissionResource, action: Permiss
 export function canAccessNavItem(role: AppRole, key: string) {
   const normalizedRole = normalizeAppRole(role);
 
+  if (key === "tauros_ai") return true;
+
   if (normalizedRole === "owner" || normalizedRole === "admin") return true;
 
   if (normalizedRole === "department_manager") {
-    return ["dashboard", "issues", "tasks", "approvals", "teams", "ai"].includes(key);
+    return ["dashboard", "issues", "tasks", "approvals", "teams", "ai", "tauros_ai"].includes(key);
   }
 
-  return ["dashboard", "issues", "tasks", "ai"].includes(key);
+  return ["dashboard", "issues", "tasks", "ai", "tauros_ai"].includes(key);
+}
+
+export function getTaurosAiPermissionFlags(role: AppRole) {
+  const normalizedRole = normalizeAppRole(role);
+  const canManageKnowledge = taurosAiManagementRoles.includes(normalizedRole);
+
+  return {
+    can_access_tauros_ai: true,
+    can_manage_tauros_ai_knowledge: canManageKnowledge,
+    can_view_knowledge: true,
+    can_create_knowledge: canManageKnowledge,
+    can_edit_knowledge: canManageKnowledge,
+    can_delete_knowledge: normalizedRole === "owner",
+    can_view_knowledge_chat_logs: canManageKnowledge,
+    can_manage_knowledge_visibility: canManageKnowledge,
+  };
 }
 
 export function mapDemoRoleToAppRole(role: string): AppRole {
