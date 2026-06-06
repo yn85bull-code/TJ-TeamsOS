@@ -638,6 +638,15 @@ function DetailBox({ label, value }: { label: string; value: string }) {
   );
 }
 
+function CompactTextBlock({ label, text }: { label: string; text: string }) {
+  return (
+    <div className="rounded-lg border border-slate-100 bg-white px-3 py-2">
+      <p className="text-xs font-bold text-slate-500">{label}</p>
+      <p className="mt-1 max-h-16 overflow-y-auto text-xs leading-5 text-slate-700">{text}</p>
+    </div>
+  );
+}
+
 function IssueEditPanel({
   issue,
   departmentOptions = DEFAULT_DEPARTMENTS,
@@ -794,6 +803,15 @@ function getIssueSupabaseId(issue: IssueListEntry) {
 function getLinkedTaskForIssue(issue: IssueListEntry, tasks: CreatedTaskEntry[]) {
   const issueSupabaseId = getIssueSupabaseId(issue);
   return tasks.find((task) => task.sourceIssueId === issue.id || Boolean(issueSupabaseId && task.sourceIssueSupabaseId === issueSupabaseId));
+}
+
+function getSourceIssueForTask(task: CreatedTaskEntry, createdIssues: CreatedIssueEntry[]) {
+  if (task.sourceType === "direct") return undefined;
+  const allIssues: IssueListEntry[] = [...createdIssues, ...pageDemo.issues];
+  return allIssues.find((issue) => {
+    const issueSupabaseId = getIssueSupabaseId(issue);
+    return issue.id === task.sourceIssueId || Boolean(issueSupabaseId && task.sourceIssueSupabaseId === issueSupabaseId);
+  });
 }
 
 function mergeProjectTasks(tasks: CreatedTaskEntry[]) {
@@ -1002,6 +1020,7 @@ export function TasksPage({
   currentUserDepartment,
   sendbackTasks = [],
   createdTasks = [],
+  createdIssues = [],
   preferredView,
   onCreateApproval,
   onUpdateTask,
@@ -1017,6 +1036,7 @@ export function TasksPage({
   currentUserDepartment?: string;
   sendbackTasks?: SendbackTaskEntry[];
   createdTasks?: CreatedTaskEntry[];
+  createdIssues?: CreatedIssueEntry[];
   preferredView?: "mine" | "team" | "approval" | "sendback";
   onCreateApproval?: (approval: ApprovalRequestEntry) => void;
   onUpdateTask?: (task: CreatedTaskEntry) => void;
@@ -1307,81 +1327,83 @@ export function TasksPage({
             createdTaskDetail?.assigneePerson && createdTaskDetail.assigneePerson !== "未選択"
               ? createdTaskDetail.assigneePerson
               : task.assigneeName;
+          const sourceIssue = createdTaskDetail ? getSourceIssueForTask(createdTaskDetail, createdIssues) : undefined;
+          const taskAsIs = sourceIssue ? getIssueAsIsValue(sourceIssue) : "Projectに紐づくAs-Isは未設定です。";
+          const taskToBe = sourceIssue ? getIssueToBe(sourceIssue) : record.approvalToBe || "Projectに紐づくTo-Beは未設定です。";
 
           return (
-            <PanelCard key={task.id} className="p-5">
+            <PanelCard key={task.id} className="p-4">
               <div className="flex items-start justify-between gap-3">
-                <div>
+                <div className="min-w-0">
                   <h3 className="font-bold">{task.title}</h3>
-                  <p className="mt-1 text-sm text-slate-500">{task.projectName}</p>
+                  <p className="mt-0.5 text-xs font-semibold text-slate-500">{task.projectName}</p>
                 </div>
                 <PriorityBadge priority={task.priority} />
               </div>
 
-              <div className="mt-4 grid gap-2 border-y border-slate-100 py-3 text-xs text-slate-600">
+              <div className="mt-3 grid gap-x-4 gap-y-1 border-y border-slate-100 py-2 text-xs text-slate-600 sm:grid-cols-3">
                 {taskRegistrant ? (
-                  <div className="flex items-center justify-between gap-3">
+                  <div>
                     <span className="font-bold text-slate-500">登録者</span>
-                    <strong className="text-right text-slate-800">{taskRegistrant}</strong>
+                    <p className="mt-0.5 font-bold text-slate-800">{taskRegistrant}</p>
                   </div>
                 ) : null}
-                <div className="flex items-center justify-between gap-3">
+                <div>
                   <span className="font-bold text-slate-500">担当責任者</span>
-                  <strong className="text-right text-slate-800">{taskResponsiblePerson}</strong>
+                  <p className="mt-0.5 font-bold text-slate-800">{taskResponsiblePerson}</p>
                 </div>
-                <div className="flex items-center justify-between gap-3">
+                <div>
                   <span className="font-bold text-slate-500">担当者</span>
-                  <strong className="text-right text-slate-800">{taskAssigneePerson}</strong>
+                  <p className="mt-0.5 font-bold text-slate-800">{taskAssigneePerson}</p>
                 </div>
               </div>
 
-              <div className="mt-5 rounded-lg bg-slate-50 p-4">
+              <div className="mt-3 rounded-lg bg-slate-50 p-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-xs font-bold text-slate-500">現在の進捗</p>
-                    <strong className="text-2xl text-slate-950">{record.progress}%</strong>
+                    <strong className="text-xl text-slate-950">{record.progress}%</strong>
                   </div>
                   <StatusBadge status={status} />
                 </div>
-                <div className="mt-3">
+                <div className="mt-2">
                   <ProgressBar value={record.progress} />
                 </div>
-                <p className="mt-3 text-xs font-semibold text-slate-500">最終更新: {latestUpdate.at}</p>
+                <p className="mt-2 text-xs font-semibold text-slate-500">最終更新: {latestUpdate.at}</p>
               </div>
 
-              <div className="mt-4 grid gap-2 text-sm">
+              <div className="mt-3 grid gap-2 text-sm">
                 <div className="flex items-center justify-between">
                   <span className="text-slate-500">期限</span>
                   <strong className="text-[#D6001C]">{task.dueDate}</strong>
                 </div>
                 <div className="grid gap-2">
-                  <div>
-                    <p className="text-xs font-bold text-slate-500">今回の達成内容</p>
-                    <p className="mt-1 rounded-lg border border-slate-100 bg-white p-3 text-sm leading-6 text-slate-700">{achievementMemo || "まだ達成内容は記録されていません。"}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-500">次にやること</p>
-                    <p className="mt-1 rounded-lg border border-slate-100 bg-white p-3 text-sm leading-6 text-slate-700">{nextActionMemo || "次の作業内容を整理してください。"}</p>
-                  </div>
+                  <CompactTextBlock label="As-Is" text={taskAsIs} />
+                  <CompactTextBlock label="To-Be" text={taskToBe} />
                 </div>
               </div>
 
-              <div className="mt-4">
-                <p className="text-xs font-bold text-slate-500">進捗履歴</p>
-                <div className="mt-2 grid gap-2">
+              <div className="mt-3 rounded-lg border border-slate-100 bg-white p-3">
+                <p className="text-xs font-bold text-slate-500">進捗報告</p>
+                <div className="mt-2 grid gap-1 text-xs leading-5 text-slate-700">
+                  <p><span className="font-bold text-slate-900">達成内容:</span> {achievementMemo || "まだ達成内容は記録されていません。"}</p>
+                  <p><span className="font-bold text-slate-900">次にやること:</span> {nextActionMemo || "次の作業内容を整理してください。"}</p>
+                </div>
+                <div className="mt-2 grid gap-1.5 border-t border-slate-100 pt-2">
+                  <p className="text-xs font-bold text-slate-500">履歴</p>
                   {record.updates.slice(0, 2).map((update, index) => (
-                    <div key={`${task.id}-${update.at}-${update.progress}-${index}`} className="rounded-lg border border-slate-100 p-3 text-xs">
-                      <div className="flex items-center justify-between gap-2">
+                    <div key={`${task.id}-${update.at}-${update.progress}-${index}`} className="text-xs leading-5">
+                      <div className="flex items-center justify-between gap-2 text-slate-500">
                         <strong>{update.progress}%</strong>
-                        <span className="text-slate-500">{update.at}</span>
+                        <span>{update.at}</span>
                       </div>
                       {update.achievementMemo || update.nextActionMemo ? (
-                        <div className="mt-1 grid gap-1 leading-5 text-slate-600">
+                        <div className="mt-0.5 grid gap-0.5 text-slate-600">
                           {update.achievementMemo ? <p><span className="font-bold text-slate-700">達成内容:</span> {update.achievementMemo}</p> : null}
                           {update.nextActionMemo ? <p><span className="font-bold text-slate-700">次にやること:</span> {update.nextActionMemo}</p> : null}
                         </div>
                       ) : (
-                        <p className="mt-1 leading-5 text-slate-600">{update.memo}</p>
+                        <p className="mt-0.5 text-slate-600">{update.memo}</p>
                       )}
                     </div>
                   ))}
@@ -1389,7 +1411,7 @@ export function TasksPage({
               </div>
 
               {record.approvalRequestedAt ? (
-                <div className="mt-4 rounded-lg border border-indigo-100 bg-indigo-50 p-3 text-xs text-indigo-800">
+                <div className="mt-3 rounded-lg border border-indigo-100 bg-indigo-50 p-2.5 text-xs text-indigo-800">
                   <strong>承認申請済み</strong>
                   <p className="mt-1">申請日時: {record.approvalRequestedAt}</p>
                   <p className="mt-1">完了後の状態: {record.approvalToBe}</p>
@@ -1397,7 +1419,7 @@ export function TasksPage({
               ) : null}
 
               {createdTaskDetail ? (
-                <div className="mt-4 rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-xs text-emerald-800">
+                <div className="mt-3 rounded-lg border border-emerald-100 bg-emerald-50 p-2.5 text-xs text-emerald-800">
                   <strong>{createdTaskDetail.sourceType === "direct" ? "新規Task登録" : "ProjectからTask化"}</strong>
                   <p className="mt-1">{createdTaskDetail.sourceType === "direct" ? "登録" : `元Project: ${createdTaskDetail.sourceIssueId}`} / 発生日: {createdTaskDetail.issueCreatedAt}</p>
                   <p className="mt-1 font-bold">Task化日時: {createdTaskDetail.taskizedAt}</p>
@@ -1405,14 +1427,14 @@ export function TasksPage({
               ) : null}
 
               {sendbackDetail ? (
-                <div className="mt-4 rounded-lg border border-orange-100 bg-orange-50 p-3 text-xs text-orange-800">
+                <div className="mt-3 rounded-lg border border-orange-100 bg-orange-50 p-2.5 text-xs text-orange-800">
                   <strong>差し戻し理由</strong>
                   <p className="mt-1 leading-5">{sendbackDetail.sendbackReason}</p>
                   <p className="mt-1 font-bold">差し戻し日時: {sendbackDetail.sentBackAt}</p>
                 </div>
               ) : null}
 
-              <div className="mt-5 flex flex-wrap gap-2">
+              <div className="mt-3 flex flex-wrap gap-2">
                 {createdTaskDetail ? (
                   <button
                     className="inline-flex h-9 min-w-[56px] items-center justify-center whitespace-nowrap rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:text-slate-300"
