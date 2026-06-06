@@ -30,7 +30,9 @@ export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) 
     if (!supabaseEnabled) return;
 
     let cancelled = false;
-    setIsCheckingInvite(true);
+    queueMicrotask(() => {
+      if (!cancelled) setIsCheckingInvite(true);
+    });
 
     void consumeSupabaseRedirectSession()
       .then((result) => {

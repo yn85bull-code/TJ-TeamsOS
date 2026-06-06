@@ -3,7 +3,6 @@
 import { PanelCard, PriorityBadge, ProgressBar, StatusBadge, colorMap } from "@/components/ui/dashboard-ui";
 import {
   DashboardKpi,
-  NotificationSummary,
   TaskStatus,
   TaskSummary,
   aiRoadmap,
@@ -16,6 +15,7 @@ import {
   recentActivities,
 } from "@/lib/dashboard-demo-data";
 import { canAccessNavItem, normalizeAppRole } from "@/lib/domain/permissions";
+import type { MyTodoEntry, MyTodoPriority, MyTodoStatus } from "@/lib/workspace/my-todo-store";
 import { DEFAULT_DEPARTMENTS, normalizeDepartmentList } from "@/lib/workspace/department-store";
 import { AppRole } from "@/types/database";
 import {
@@ -24,7 +24,6 @@ import {
   CalendarDays,
   Circle,
   CircleAlert,
-  CircleDot,
   Filter,
   Flag,
   Mail,
@@ -40,6 +39,7 @@ type DashboardPageProps = {
   onNavigate: (key: string) => void;
   createdTasks?: TaskSummary[];
   createdIssues?: Array<{ owner: string }>;
+  myTodos?: MyTodoEntry[];
   departmentOptions?: string[];
   appRole?: AppRole;
   currentUserName?: string;
@@ -47,7 +47,7 @@ type DashboardPageProps = {
   currentUserDepartment?: string;
 };
 
-export function DashboardPage({ onNavigate, createdTasks = [], createdIssues = [], departmentOptions = DEFAULT_DEPARTMENTS, appRole = "member", currentUserName = "", currentUserId, currentUserDepartment }: DashboardPageProps) {
+export function DashboardPage({ onNavigate, createdTasks = [], createdIssues = [], myTodos = [], departmentOptions = DEFAULT_DEPARTMENTS, appRole = "member", currentUserName = "", currentUserId, currentUserDepartment }: DashboardPageProps) {
   const todayLabel = useMemo(() => formatTodayLabel(), []);
   const normalizedRole = normalizeAppRole(appRole);
   const canViewAll = normalizedRole === "owner" || normalizedRole === "admin";
@@ -76,7 +76,7 @@ export function DashboardPage({ onNavigate, createdTasks = [], createdIssues = [
       <section className={`grid gap-5 ${canViewTeamSummary ? "xl:grid-cols-[1.05fr_1.35fr_0.75fr]" : "xl:grid-cols-[1fr_0.85fr]"}`}>
         <MyTasksPanel onNavigate={onNavigate} createdTasks={visibleCreatedTasks} currentUserName={currentUserName} appRole={appRole} />
         {canViewTeamSummary ? <TeamKanban onNavigate={onNavigate} /> : null}
-        <ImportantNotificationsPanel onNavigate={onNavigate} appRole={appRole} />
+        <MyTodoDashboardPanel onNavigate={onNavigate} myTodos={myTodos} />
       </section>
 
       {canViewTeamSummary ? (
@@ -123,10 +123,6 @@ function filterDashboardTasks(tasks: TaskSummary[], currentUserName: string, cur
 function isDashboardTaskRelated(task: DashboardTaskScopeEntry, currentUserName: string, currentUserId?: string) {
   if (task.createdById && currentUserId && task.createdById === currentUserId) return true;
   return [task.createdByName, task.assigneeName, task.responsiblePerson, task.assigneePerson].some((name) => isSamePersonName(name, currentUserName));
-}
-
-function getNotificationTarget(item: NotificationSummary) {
-  return item.type === "approval" ? "approvals" : item.type === "ai" ? "ai" : item.type === "task" ? "tasks" : "logs";
 }
 
 function isSamePersonName(left: string | undefined, right: string | undefined) {
@@ -363,54 +359,80 @@ export function TaskCard({ task }: { task: TaskSummary }) {
   );
 }
 
-export function ImportantNotificationsPanel({ onNavigate, appRole = "member" }: DashboardPageProps) {
-  const visibleNotifications = notifications.filter((item) => canAccessNavItem(appRole, getNotificationTarget(item)));
-  const groups = [
-    { title: "承認待ち", count: visibleNotifications.filter((item) => item.type === "approval").length, items: visibleNotifications.filter((item) => item.type === "approval") },
-    { title: "AI提案候補", count: visibleNotifications.filter((item) => item.type === "ai").length, items: visibleNotifications.filter((item) => item.type === "ai") },
-    { title: "重要な通知", count: visibleNotifications.filter((item) => item.type === "comment" || item.type === "task").length, items: visibleNotifications.filter((item) => item.type === "comment" || item.type === "task") },
-  ].filter((group) => group.items.length > 0);
+export function MyTodoDashboardPanel({ onNavigate, myTodos = [] }: DashboardPageProps) {
+  const dashboardTodos = useMemo(() => getDashboardMyTodos(myTodos), [myTodos]);
 
   return (
     <PanelCard className="p-5">
       <div className="flex items-center justify-between">
-        <h3 className="font-bold">重要な通知</h3>
-        <button className="text-xs font-bold text-slate-700" type="button" onClick={() => onNavigate("ai")}>
-          すべて見る
+        <div>
+          <h3 className="font-bold">MyToDo</h3>
+          <p className="mt-1 text-xs font-semibold text-slate-500">未完了・期限近め・高優先度の個人ToDo</p>
+        </div>
+        <button className="text-xs font-bold text-slate-700" type="button" onClick={() => onNavigate("my_todo")}>
+          管理する
         </button>
       </div>
-      <div className="mt-4 grid gap-5">
-        {groups.map((group) => (
-          <section key={group.title}>
-            <div className="mb-2 flex items-center justify-between">
-              <h4 className="text-sm font-bold text-slate-900">{group.title}</h4>
-              <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-bold text-[#D6001C]">{group.count}件</span>
+      <div className="mt-4 grid gap-2">
+        {dashboardTodos.map((todo) => (
+          <button key={todo.id} className="grid gap-2 rounded-lg border border-slate-100 bg-slate-50 p-3 text-left transition hover:border-[#D6001C] hover:bg-white" type="button" onClick={() => onNavigate("my_todo")}>
+            <div className="flex items-start justify-between gap-3">
+              <p className="line-clamp-2 text-sm font-bold text-slate-900">{todo.title}</p>
+              <MyTodoPriorityBadge priority={todo.priority} />
             </div>
-            <div className="grid gap-2">
-              {group.items.map((item) => (
-                <NotificationItem key={item.id} item={item} onNavigate={onNavigate} />
-              ))}
+            <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-500">
+              <span>{formatDashboardMyTodoDueDate(todo.dueDate)}</span>
+              <MyTodoStatusBadge status={todo.status} />
             </div>
-          </section>
+          </button>
         ))}
-        {groups.length === 0 ? <p className="rounded-lg bg-slate-50 p-4 text-sm font-semibold text-slate-500">表示できる通知はありません。</p> : null}
+        {dashboardTodos.length === 0 ? <p className="rounded-lg bg-slate-50 p-4 text-sm font-semibold text-slate-500">未完了のMyToDoはありません。</p> : null}
       </div>
     </PanelCard>
   );
 }
 
-export function NotificationItem({ item, onNavigate }: { item: NotificationSummary; onNavigate: (key: string) => void }) {
-  const target = getNotificationTarget(item);
-  return (
-    <button className="flex gap-3 rounded-lg p-2 text-left transition hover:bg-slate-50" type="button" onClick={() => onNavigate(target)}>
-      <CircleDot className={item.unread ? "mt-1 text-[#D6001C]" : "mt-1 text-slate-300"} size={13} />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold">{item.title}</p>
-        <p className="truncate text-xs text-slate-500">{item.subtitle}</p>
-      </div>
-      <span className="shrink-0 text-[11px] font-semibold text-slate-500">{item.timeLabel}</span>
-    </button>
-  );
+function getDashboardMyTodos(myTodos: MyTodoEntry[]) {
+  return myTodos
+    .filter((todo) => !todo.deletedAt && todo.status !== "done")
+    .sort((left, right) => {
+      const priorityDiff = getMyTodoPriorityRank(right.priority) - getMyTodoPriorityRank(left.priority);
+      if (priorityDiff !== 0) return priorityDiff;
+      return getMyTodoDueTime(left.dueDate) - getMyTodoDueTime(right.dueDate);
+    })
+    .slice(0, 6);
+}
+
+function getMyTodoPriorityRank(priority: MyTodoPriority) {
+  return priority === "high" ? 3 : priority === "medium" ? 2 : 1;
+}
+
+function getMyTodoDueTime(dueDate: string) {
+  if (!dueDate) return Number.MAX_SAFE_INTEGER;
+  const time = new Date(`${dueDate}T00:00:00`).getTime();
+  return Number.isFinite(time) ? time : Number.MAX_SAFE_INTEGER;
+}
+
+function formatDashboardMyTodoDueDate(dueDate: string) {
+  if (!dueDate) return "期限なし";
+  const [year, month, day] = dueDate.split("-");
+  if (!year || !month || !day) return dueDate;
+  return `${month}/${day}`;
+}
+
+function MyTodoPriorityBadge({ priority }: { priority: MyTodoPriority }) {
+  const config = priority === "high"
+    ? { label: "高", className: "bg-red-50 text-red-700 ring-red-200" }
+    : priority === "medium"
+      ? { label: "中", className: "bg-orange-50 text-orange-700 ring-orange-200" }
+      : { label: "低", className: "bg-slate-100 text-slate-700 ring-slate-200" };
+  return <span className={`shrink-0 rounded-md px-2 py-1 text-[11px] font-black ring-1 ${config.className}`}>{config.label}</span>;
+}
+
+function MyTodoStatusBadge({ status }: { status: MyTodoStatus }) {
+  const label = status === "not_started" ? "未着手" : status === "in_progress" ? "進行中" : status === "on_hold" ? "保留" : "完了";
+  const className = status === "done" ? "bg-emerald-50 text-emerald-700" : status === "on_hold" ? "bg-slate-100 text-slate-700" : "bg-blue-50 text-blue-700";
+  return <span className={`rounded px-2 py-0.5 text-[11px] ${className}`}>{label}</span>;
 }
 
 export function DueDateDonutCard() {

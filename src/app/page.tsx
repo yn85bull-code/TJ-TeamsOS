@@ -16,6 +16,7 @@ import {
   CreatedTaskEntry,
   CreatedIssueEntry,
   IssuesPage,
+  MyTodoPage,
   ReportsPage,
   SendbackTaskEntry,
   SettingsPage,
@@ -33,6 +34,7 @@ import { createActivityLogRecord, loadActivityLogsFromSupabase } from "@/lib/wor
 import { createApprovalRecord, loadApprovalRecordsFromSupabase, updateApprovalDecision, updateApprovalReview } from "@/lib/workspace/approval-record-store";
 import { createIssueRecord, createTaskRecord, loadCreatedRecordsFromSupabase, restoreIssueRecord, restoreTaskRecord, softDeleteIssueRecord, softDeleteTaskRecord, updateIssueRecord, updateTaskRecord } from "@/lib/workspace/created-record-store";
 import { DEPARTMENTS_STORAGE_KEY, DEFAULT_DEPARTMENTS, normalizeDepartmentList } from "@/lib/workspace/department-store";
+import { createMyTodoRecord, loadMyTodos, softDeleteMyTodoRecord, updateMyTodoRecord, type MyTodoEntry } from "@/lib/workspace/my-todo-store";
 import { createNotificationRecord, loadNotificationsFromSupabase, markNotificationReadRecord, markNotificationsReadRecord, type AppNotificationEntry } from "@/lib/workspace/notification-store";
 import { AppRole } from "@/types/database";
 import { CheckCircle2, X } from "lucide-react";
@@ -66,6 +68,7 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
   const [sendbackTasks, setSendbackTasks] = useState<SendbackTaskEntry[]>([]);
   const [createdTasks, setCreatedTasks] = useState<CreatedTaskEntry[]>([]);
   const [createdIssues, setCreatedIssues] = useState<CreatedIssueEntry[]>([]);
+  const [myTodos, setMyTodos] = useState<MyTodoEntry[]>([]);
   const [preferredTaskView, setPreferredTaskView] = useState<"mine" | "team" | "approval" | "sendback" | undefined>();
   const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
   const [headerNotifications, setHeaderNotifications] = useState<AppNotificationEntry[]>([]);
@@ -91,16 +94,23 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
   };
 
   useEffect(() => {
-    setApprovalRequests(loadStoredList<ApprovalRequestEntry>(APPROVAL_REQUESTS_STORAGE_KEY));
-    setResolvedApprovalIds(loadStoredList<string>(RESOLVED_APPROVALS_STORAGE_KEY));
-    setApprovalHistory(loadStoredList<ApprovalHistoryEntry>(APPROVAL_HISTORY_STORAGE_KEY));
-    setSendbackTasks(loadStoredList<SendbackTaskEntry>(SENDBACK_TASKS_STORAGE_KEY));
-    setCreatedTasks(loadStoredList<CreatedTaskEntry>(CREATED_TASKS_STORAGE_KEY));
-    setCreatedIssues(loadStoredList<CreatedIssueEntry>(CREATED_ISSUES_STORAGE_KEY));
-    setActivityLogs(loadStoredList<ActivityLogEntry>(ACTIVITY_LOGS_STORAGE_KEY));
-    setHeaderNotifications(loadStoredList<AppNotificationEntry>(NOTIFICATIONS_STORAGE_KEY));
-    const storedDepartments = loadStoredList<string>(DEPARTMENTS_STORAGE_KEY);
-    setDepartments(storedDepartments.length ? normalizeDepartmentList(storedDepartments) : DEFAULT_DEPARTMENTS);
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setApprovalRequests(loadStoredList<ApprovalRequestEntry>(APPROVAL_REQUESTS_STORAGE_KEY));
+      setResolvedApprovalIds(loadStoredList<string>(RESOLVED_APPROVALS_STORAGE_KEY));
+      setApprovalHistory(loadStoredList<ApprovalHistoryEntry>(APPROVAL_HISTORY_STORAGE_KEY));
+      setSendbackTasks(loadStoredList<SendbackTaskEntry>(SENDBACK_TASKS_STORAGE_KEY));
+      setCreatedTasks(loadStoredList<CreatedTaskEntry>(CREATED_TASKS_STORAGE_KEY));
+      setCreatedIssues(loadStoredList<CreatedIssueEntry>(CREATED_ISSUES_STORAGE_KEY));
+      setActivityLogs(loadStoredList<ActivityLogEntry>(ACTIVITY_LOGS_STORAGE_KEY));
+      setHeaderNotifications(loadStoredList<AppNotificationEntry>(NOTIFICATIONS_STORAGE_KEY));
+      const storedDepartments = loadStoredList<string>(DEPARTMENTS_STORAGE_KEY);
+      setDepartments(storedDepartments.length ? normalizeDepartmentList(storedDepartments) : DEFAULT_DEPARTMENTS);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -125,6 +135,20 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
     void loadNotificationsFromSupabase(currentUser.id).then((records) => {
       if (cancelled || records.target !== "supabase") return;
       setHeaderNotifications((items) => mergeByRecordId(records.notifications, items));
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    let cancelled = false;
+    void loadMyTodos(currentUser.id, currentUser.name).then((records) => {
+      if (cancelled) return;
+      setMyTodos(records.todos);
     });
 
     return () => {
@@ -170,7 +194,7 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
 
   useEffect(() => {
     if (currentUser && !canAccessNavItem(currentAppRole, activeKey)) {
-      setActiveKey("dashboard");
+      queueMicrotask(() => setActiveKey("dashboard"));
     }
   }, [activeKey, currentAppRole, currentUser]);
 
@@ -498,6 +522,18 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
     });
     void restoreTaskRecord(task, currentUser?.authSource === "supabase" ? currentUser.id : undefined);
   };
+  const createMyTodo = async (todo: MyTodoEntry) => {
+    const saved = await createMyTodoRecord(todo, currentUser?.id);
+    setMyTodos((items) => [saved.entry, ...items.filter((item) => !isSameMyTodo(item, saved.entry))]);
+  };
+  const updateMyTodo = (todo: MyTodoEntry) => {
+    setMyTodos((items) => items.map((item) => isSameMyTodo(item, todo) ? todo : item));
+    void updateMyTodoRecord(todo, currentUser?.id);
+  };
+  const deleteMyTodo = (todo: MyTodoEntry) => {
+    setMyTodos((items) => items.map((item) => isSameMyTodo(item, todo) ? todo : item));
+    void softDeleteMyTodoRecord(todo, currentUser?.id);
+  };
   const completeCreate = async (payload: CreateDrawerPayload) => {
     const issue: CreatedIssueEntry = {
       id: `ISS-NEW-${Date.now()}`,
@@ -545,6 +581,7 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
     setActiveKey("dashboard");
     setCreateOpen(false);
     setCreateNotice(null);
+    setMyTodos([]);
   };
 
   if (!currentUser) {
@@ -578,6 +615,7 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
             sendbackTasks={sendbackTasks}
             createdTasks={createdTasks}
             createdIssues={createdIssues}
+            myTodos={myTodos}
             preferredTaskView={preferredTaskView}
             requesterName={currentUser.name}
             currentUserName={currentUser.name}
@@ -594,6 +632,9 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
             onRestoreIssue={restoreCreatedIssue}
             onDeleteTask={deleteCreatedTask}
             onRestoreTask={restoreCreatedTask}
+            onCreateMyTodo={createMyTodo}
+            onUpdateMyTodo={updateMyTodo}
+            onDeleteMyTodo={deleteMyTodo}
             onResolveApproval={resolveApproval}
             onReviewApproval={reviewApproval}
             onSendBackTask={sendBackTask}
@@ -648,6 +689,7 @@ function ActivePage({
   sendbackTasks,
   createdTasks,
   createdIssues,
+  myTodos,
   preferredTaskView,
   requesterName,
   currentUserName,
@@ -664,6 +706,9 @@ function ActivePage({
   onRestoreIssue,
   onDeleteTask,
   onRestoreTask,
+  onCreateMyTodo,
+  onUpdateMyTodo,
+  onDeleteMyTodo,
   onResolveApproval,
   onReviewApproval,
   onSendBackTask,
@@ -683,6 +728,7 @@ function ActivePage({
   sendbackTasks: SendbackTaskEntry[];
   createdTasks: CreatedTaskEntry[];
   createdIssues: CreatedIssueEntry[];
+  myTodos: MyTodoEntry[];
   preferredTaskView?: "mine" | "team" | "approval" | "sendback";
   requesterName: string;
   currentUserName: string;
@@ -699,6 +745,9 @@ function ActivePage({
   onRestoreIssue: (issue: CreatedIssueEntry) => void;
   onDeleteTask: (task: CreatedTaskEntry) => void;
   onRestoreTask: (task: CreatedTaskEntry) => void;
+  onCreateMyTodo: (todo: MyTodoEntry) => void;
+  onUpdateMyTodo: (todo: MyTodoEntry) => void;
+  onDeleteMyTodo: (todo: MyTodoEntry) => void;
   onResolveApproval: (approval: ApprovalRequestEntry, mode: "approve" | "sendback", comment: string) => void;
   onReviewApproval: (approval: ApprovalRequestEntry, comment: string) => void;
   onSendBackTask: (task: SendbackTaskEntry) => void;
@@ -713,11 +762,13 @@ function ActivePage({
 }) {
   switch (activeKey) {
     case "dashboard":
-      return <DashboardPage onNavigate={onNavigate} createdTasks={createdTasks} createdIssues={createdIssues} departmentOptions={departments} appRole={appRole} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} />;
+      return <DashboardPage onNavigate={onNavigate} createdTasks={createdTasks} createdIssues={createdIssues} myTodos={myTodos} departmentOptions={departments} appRole={appRole} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} />;
     case "issues":
       return <IssuesPage onNavigate={onNavigate} onAddLog={onAddLog} onCreateTask={onCreateTask} onUpdateIssue={onUpdateIssue} onDeleteIssue={onDeleteIssue} onRestoreIssue={onRestoreIssue} createdIssues={createdIssues} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} appRole={appRole} departmentOptions={departments} />;
     case "tasks":
       return <TasksPage appRole={appRole} requesterName={requesterName} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} sendbackTasks={sendbackTasks} createdTasks={createdTasks} preferredView={preferredTaskView} approvalReviewerOptions={approvalReviewerOptions} finalApprover={finalApprover} onCreateApproval={onCreateApproval} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} onRestoreTask={onRestoreTask} />;
+    case "my_todo":
+      return <MyTodoPage myTodos={myTodos} currentUserName={currentUserName} currentUserId={currentUserId} appRole={appRole} onCreateMyTodo={onCreateMyTodo} onUpdateMyTodo={onUpdateMyTodo} onDeleteMyTodo={onDeleteMyTodo} />;
     case "approvals":
       return <ApprovalsPage onNavigate={onNavigate} approvalRequests={approvalRequests} resolvedApprovalIds={resolvedApprovalIds} onResolveApproval={onResolveApproval} onReviewApproval={onReviewApproval} onSendBackTask={onSendBackTask} approvalHistory={approvalHistory} onRecordApproval={onRecordApproval} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} appRole={appRole} />;
     case "teams":
@@ -733,7 +784,7 @@ function ActivePage({
     case "settings":
       return <SettingsPage departments={departments} onAddDepartment={onAddDepartment} onDeleteDepartment={onDeleteDepartment} currentUserId={currentUserId} currentUserName={currentUserName} currentAuthSource={currentAuthSource} appRole={appRole} />;
     default:
-      return <DashboardPage onNavigate={onNavigate} createdTasks={createdTasks} createdIssues={createdIssues} departmentOptions={departments} />;
+      return <DashboardPage onNavigate={onNavigate} createdTasks={createdTasks} createdIssues={createdIssues} myTodos={myTodos} departmentOptions={departments} appRole={appRole} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} />;
   }
 }
 
@@ -1005,6 +1056,10 @@ function isSameRecord(left: { id?: string; supabaseId?: string }, right: { id?: 
     (left.id && right.id && left.id === right.id) ||
     (left.supabaseId && right.supabaseId && left.supabaseId === right.supabaseId),
   );
+}
+
+function isSameMyTodo(left: MyTodoEntry, right: MyTodoEntry) {
+  return isSameRecord(left, right);
 }
 
 function createClientId(prefix: string) {

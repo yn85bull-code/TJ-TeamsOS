@@ -1,95 +1,85 @@
 # Supabase 接続手順
 
-## 1. プロジェクト作成
+## 1. 環境変数
 
-Supabase Dashboard で新しいProjectを作成します。
-
-作成後、Project Settings > Data API から次の2つを確認します。
-
-- Project URL
-- publishable key
-
-この2つをアプリ直下の `.env.local` に入れます。
+Supabase Dashboardの `Project Settings > Data API` で次を確認し、アプリ直下の `.env.local` に設定します。
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=YOUR_SUPABASE_PUBLISHABLE_KEY
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 
-# Owner専用のユーザー招待で使用します。ブラウザには出さないでください。
+# Owner専用のユーザー招待APIで使用します。ブラウザには出さないでください。
 SUPABASE_SERVICE_ROLE_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY
 ```
 
-## 2. DBスキーマ作成
+## 2. 初期スキーマ
 
-Dashboard > SQL Editor で、次のSQLを全て実行します。
+SQL Editorで次を実行します。
 
 ```text
 supabase/migrations/20260603_initial_schema.sql
 ```
 
-## 3. Authユーザー作成
+## 3. プロフィールと権限
 
-Dashboard > Authentication > Users からユーザーを作成します。
-
-テスト用の推奨ユーザー:
-
-- yn85bull@gmail.com / Owner
-- yamada@example.com / Admin
-- suzuki@example.com / Admin
-- sato@example.com / Manager
-- tanaka@example.com / Member
-
-## 4. profiles登録
-
-Authユーザー作成後、各ユーザーの UUID を確認し、次のテンプレート内のUUIDを差し替えてSQL Editorで実行します。
+Authユーザー作成後、`public.profiles` にユーザー情報を登録します。
 
 ```text
 supabase/seed_profiles_template.sql
 ```
 
-この環境で作成済みの5ユーザーへそのまま反映する場合は、次のSQLを実行します。
+既存ユーザーのOwner/Admin/Manager/Memberを揃える場合:
 
 ```text
 supabase/align_profile_roles_20260606.sql
 ```
 
-このSQLは、Ownerを楢原悠太郎さんに固定し、Admin/Manager/Memberへ旧ロールを整理します。
-
-権限モデルを課題・タスク・承認フローへ反映する場合は、次のSQLも実行します。
+課題、タスク、承認フローのRLS・権限制御を反映する場合:
 
 ```text
 supabase/apply_permission_model_20260606.sql
 ```
 
-このSQLは、Memberを自分関連データのみ、Managerを自部門・自拠点の閲覧と確認のみ、Owner / Adminを最終承認可能に揃えます。
+## 4. TaurosAI
 
-TaurosAIとナレッジ機能の土台を作る場合は、次のSQLも実行します。
+TaurosAIのナレッジ、ファイル、チャットログ、FAQ候補、Storage Bucketを追加します。
 
 ```text
 supabase/add_tauros_ai_knowledge_20260606.sql
 ```
 
-このSQLは、`knowledge_items`、`knowledge_files`、`knowledge_chat_logs`、`knowledge_faq_candidates` と非公開Storage Bucket `tauros-ai-knowledge` を作成します。
-TaurosAI自体は全ロールで利用可能、ナレッジ管理はOwner / Adminのみ利用可能にします。
+## 5. MyToDo
 
-## 5. ローカル確認
+個人用ToDo・メモの `my_todos` テーブルを追加します。
 
-環境変数を入れた後、サーバーを再起動します。
+```text
+supabase/add_my_todos_20260606.sql
+```
+
+MyToDoは通常タスクや承認フローとは別物です。RLSは `auth.uid() = user_id` に固定しているため、Owner / Admin / Managerでも他ユーザーのMyToDoは取得・更新できません。
+
+## 6. ローカル確認
+
+開発サーバー:
+
+```powershell
+npm run dev
+```
+
+共有サーバー:
 
 ```powershell
 npm run start -- --hostname 0.0.0.0 --port 3000
 ```
 
-ログイン画面の「本ログイン」が有効になれば接続準備OKです。
+## 7. TeamOS内からユーザー招待
 
-## 6. TeamOS内からユーザー招待
+`.env.local` に `SUPABASE_SERVICE_ROLE_KEY` を設定して開発サーバーを再起動します。
 
-`SUPABASE_SERVICE_ROLE_KEY` を `.env.local` に設定し、開発サーバーを再起動します。
+Ownerで本ログインしたあと、`Settings > ユーザー設定 > ユーザー招待` から招待メールを送れます。
 
-Ownerで本ログインしたあと、TeamOSの `Settings > ユーザー設定 > ユーザー招待` から招待メールを送れます。
-
-- Ownerは楢原悠太郎さん固定
-- 招待時に選べる権限は Admin / Manager / Member
-- 招待後、`public.profiles` に氏名・メール・部門・権限が登録されます
+- Ownerは楢原悠太郎さんのみ
+- 招待時に選べる権限はAdmin / Manager / Member
+- 招待後、`public.profiles` に氏名、メール、部門、役職、権限が登録されます
 - デモログインでは送信せず、フォーム確認のみできます

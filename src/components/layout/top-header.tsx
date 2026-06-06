@@ -11,7 +11,8 @@ import { useMemo, useState } from "react";
 const descriptions: Record<string, string> = {
   dashboard: "権限に応じて、期限、承認、AI提案、担当タスクの状況を確認します。",
   issues: "課題を親として登録し、タスク化と承認申請まで管理します。",
-  tasks: "担当タスクの進捗、ToDoメモ、承認申請の状態を確認します。",
+  tasks: "担当タスクの進捗、チームタスク、承認申請の状態を確認します。",
+  my_todo: "課題化・タスク化する前の個人ToDoとメモを管理します。",
   approvals: "承認待ちの申請を確認し、コメント付きで承認・差し戻しします。",
   teams: "部門、役職、メンバー、権限ランクを管理します。",
   tauros_ai: "社内ナレッジ、業務ルール、マニュアル、FAQをAIに質問できる社内AIアシスタントです。",
@@ -25,6 +26,7 @@ const navLabels: Record<string, string> = {
   dashboard: "Dashboard",
   issues: "Issues",
   tasks: "Tasks",
+  my_todo: "MyToDo",
   approvals: "Approvals",
   teams: "Teams",
   tauros_ai: "TaurosAI",
@@ -36,6 +38,7 @@ const navLabels: Record<string, string> = {
 
 const searchIndex = [
   { title: "期限超過タスク", subtitle: "タスク一覧で期限超過を確認", target: "tasks" },
+  { title: "MyToDo", subtitle: "個人用ToDoとメモを管理", target: "my_todo" },
   { title: "承認待ち申請", subtitle: "承認ページで最終確認", target: "approvals" },
   { title: "TaurosAI", subtitle: "社内ナレッジ、業務ルール、マニュアル、FAQを質問", target: "tauros_ai" },
   { title: "ナレッジ管理", subtitle: "マニュアル、FAQ、業務ルールの登録", target: "tauros_ai" },

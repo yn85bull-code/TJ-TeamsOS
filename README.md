@@ -1,30 +1,59 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TJ-TeamOS
 
-## Getting Started
+Tauros向けのWork OS / MVPです。課題、通常タスク、承認、権限管理、TaurosAI、MyToDoをローカルデモからSupabase接続まで検証できます。
 
-First, run the development server:
+## ローカル起動
 
-```bash
+```powershell
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+ローカル確認:
 
-## TeamOS Notes
+```text
+http://localhost:3000/
+```
 
-TaurosAIの土台ページを追加しています。
+LAN共有確認:
 
-- TeamOS内メニュー: `TaurosAI`
-- URL入口: [http://localhost:3000/tauros-ai](http://localhost:3000/tauros-ai)
-- 内部キー: `tauros_ai`
-- 役割: 社内ナレッジ、業務ルール、マニュアル、FAQへ質問するチャット型AIアシスタント
-- ナレッジ管理: Owner / Adminのみ表示
+```text
+http://192.168.0.128:3000/
+```
+
+## 主な画面
+
+- `Dashboard`: 期限、承認、担当タスク、MyToDoを確認
+- `Issues`: 課題登録、タスク化、論理削除
+- `Tasks`: 通常タスク、チームタスク、承認待ち、差し戻しタスク
+- `MyToDo`: 個人用ToDo・メモ。承認フロー対象外
+- `Approvals`: Manager確認、Owner/Admin最終承認、差し戻し
+- `TaurosAI`: 社内ナレッジ、業務ルール、マニュアル、FAQのAI確認
+- `Settings`: Owner専用の権限・部門・役職管理
+
+## MyToDo
+
+MyToDoは、課題化・通常タスク化するほどではない個人用ToDoとメモです。
+
+- URL: `http://localhost:3000/my-todo`
+- 全権限で利用可能
+- Owner / Admin / Manager / Memberの全員が、自分のMyToDoのみ閲覧・編集可能
+- Issues / Tasks / Approvals / Manager確認 / Owner承認とは連動しない
+- Dashboardには未完了、期限が近い、高優先度のMyToDoだけを確認用に表示
+- 新規登録、編集、削除、完了チェック、ステータス変更、期限、優先度管理はMyToDoページで実施
+
+Supabase SQL:
+
+```text
+supabase/add_my_todos_20260606.sql
+```
+
+## TaurosAI
+
+TaurosAIは、社内ナレッジ、業務ルール、マニュアル、FAQをAIに質問できる社内AIアシスタントです。
+
+- URL: `http://localhost:3000/tauros-ai`
+- 画面キー: `tauros_ai`
+- ナレッジ管理はOwner / Adminのみ
 
 設計メモ:
 
@@ -38,21 +67,10 @@ Supabase SQL:
 supabase/add_tauros_ai_knowledge_20260606.sql
 ```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Supabase
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Supabase接続とDB反映の手順は次を参照してください。
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```text
+supabase/README.md
+```

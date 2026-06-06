@@ -31,6 +31,8 @@ export type ApprovalStatus =
 
 export type SuggestionStatus = "pending" | "approved" | "rejected" | "converted";
 export type SuggestionType = "task" | "issue" | "approval" | "reply" | "meeting_agenda";
+export type MyTodoPriority = "high" | "medium" | "low";
+export type MyTodoStatus = "not_started" | "in_progress" | "on_hold" | "done";
 
 type RowTimestamps = {
   created_at: string;
@@ -341,6 +343,35 @@ export type Database = {
           created_at?: string;
         };
         Update: Partial<Database["public"]["Tables"]["notifications"]["Insert"]>;
+      };
+      my_todos: {
+        Row: {
+          id: string;
+          user_id: string;
+          title: string;
+          memo: string | null;
+          due_date: string | null;
+          priority: MyTodoPriority;
+          status: MyTodoStatus;
+          completed_at: string | null;
+          created_at: string;
+          updated_at: string;
+          deleted_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          title: string;
+          memo?: string | null;
+          due_date?: string | null;
+          priority?: MyTodoPriority;
+          status?: MyTodoStatus;
+          completed_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+          deleted_at?: string | null;
+        };
+        Update: Partial<Database["public"]["Tables"]["my_todos"]["Insert"]>;
       };
       ai_suggestions: {
         Row: {

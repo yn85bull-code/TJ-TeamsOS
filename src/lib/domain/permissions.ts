@@ -1,7 +1,7 @@
 import { AppRole } from "@/types/database";
 
 export type PermissionAction = "create" | "read" | "update" | "delete" | "approve" | "manage";
-export type PermissionResource = "issues" | "tasks" | "approvals" | "teams" | "settings" | "ai_suggestions" | "tauros_ai" | "knowledge" | "reports" | "logs";
+export type PermissionResource = "issues" | "tasks" | "my_todo" | "approvals" | "teams" | "settings" | "ai_suggestions" | "tauros_ai" | "knowledge" | "reports" | "logs";
 
 const roleRank: Record<AppRole, number> = {
   owner: 100,
@@ -28,6 +28,7 @@ export function can(role: AppRole, resource: PermissionResource, action: Permiss
   const normalizedRole = normalizeAppRole(role);
 
   if (resource === "tauros_ai" && action === "read") return true;
+  if (resource === "my_todo") return roleRank[normalizedRole] >= roleRank.member;
   if (resource === "knowledge") {
     if (action === "read") return roleRank[normalizedRole] >= roleRank.member;
     if (action === "create" || action === "update" || action === "manage") return taurosAiManagementRoles.includes(normalizedRole);
@@ -44,15 +45,15 @@ export function can(role: AppRole, resource: PermissionResource, action: Permiss
 export function canAccessNavItem(role: AppRole, key: string) {
   const normalizedRole = normalizeAppRole(role);
 
-  if (key === "tauros_ai") return true;
+  if (key === "tauros_ai" || key === "my_todo") return true;
 
   if (normalizedRole === "owner" || normalizedRole === "admin") return true;
 
   if (normalizedRole === "department_manager") {
-    return ["dashboard", "issues", "tasks", "approvals", "teams", "ai", "tauros_ai"].includes(key);
+    return ["dashboard", "issues", "tasks", "my_todo", "approvals", "teams", "ai", "tauros_ai"].includes(key);
   }
 
-  return ["dashboard", "issues", "tasks", "ai", "tauros_ai"].includes(key);
+  return ["dashboard", "issues", "tasks", "my_todo", "ai", "tauros_ai"].includes(key);
 }
 
 export function getTaurosAiPermissionFlags(role: AppRole) {

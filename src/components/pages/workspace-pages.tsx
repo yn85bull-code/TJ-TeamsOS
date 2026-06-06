@@ -5,10 +5,11 @@ import { can, getTaurosAiPermissionFlags } from "@/lib/domain/permissions";
 import { normalizePriority, sortByPriorityAndDueDate } from "@/lib/domain/priority";
 import { departmentProgress, kanbanColumns, myTasks, pageDemo, TaskPriority, TaskStatus, TaskSummary } from "@/lib/dashboard-demo-data";
 import { loadLocalTaskRecords, saveLocalTaskRecords, saveTaskRecord } from "@/lib/tasks/task-record-store";
+import { formatMyTodoDateTime, type MyTodoEntry, type MyTodoPriority, type MyTodoStatus } from "@/lib/workspace/my-todo-store";
 import { DEFAULT_DEPARTMENTS, normalizeDepartmentList } from "@/lib/workspace/department-store";
 import { OPERATIONAL_ROLE_OPTIONS, TeamProfileEntry, demoUsersToProfiles, getRoleLabel, inviteTeamUser, loadTeamProfilesFromSupabase, updateProfileDepartmentAndPositionInSupabase, updateProfileRoleInSupabase } from "@/lib/workspace/profile-store";
 import { AppRole } from "@/types/database";
-import { BookOpen, Bot, Building2, ClipboardList, Clock, Database, FileText, Inbox, ListChecks, LockKeyhole, Search, Send, ShieldCheck, Trash2, Upload, Users } from "lucide-react";
+import { BookOpen, Bot, Building2, CalendarDays, CheckCircle2, ClipboardList, Clock, Database, FileText, Inbox, ListChecks, LockKeyhole, Pencil, Plus, Save, Search, Send, ShieldCheck, Trash2, Upload, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type NavigateHandler = {
@@ -19,7 +20,11 @@ type NavigateHandler = {
   onUpdateTask?: (task: CreatedTaskEntry) => void;
   onDeleteIssue?: (issue: CreatedIssueEntry) => void;
   onRestoreIssue?: (issue: CreatedIssueEntry) => void;
+  onCreateMyTodo?: (todo: MyTodoEntry) => void;
+  onUpdateMyTodo?: (todo: MyTodoEntry) => void;
+  onDeleteMyTodo?: (todo: MyTodoEntry) => void;
   createdIssues?: CreatedIssueEntry[];
+  myTodos?: MyTodoEntry[];
   currentUserName?: string;
   currentUserId?: string;
   currentUserDepartment?: string;
@@ -1007,11 +1012,11 @@ export function TasksPage({
   const taskDeletePanelRef = useAutoScrollPanel(deleteTaskId ? `${deleteTaskId}-${taskPanelScrollToken}` : null);
 
   useEffect(() => {
-    setTaskRecords(loadLocalTaskRecords(initialRecords));
+    queueMicrotask(() => setTaskRecords(loadLocalTaskRecords(initialRecords)));
   }, [initialRecords]);
 
   useEffect(() => {
-    if (preferredView) setTaskView(preferredView);
+    if (preferredView) queueMicrotask(() => setTaskView(preferredView));
   }, [preferredView]);
 
   const requestTaskPanelScroll = () => {
@@ -2945,14 +2950,17 @@ export function SettingsPage({
 
   useEffect(() => {
     if (!normalizedDepartments.includes(inviteDepartment)) {
-      setInviteDepartment(normalizedDepartments[0] ?? DEFAULT_DEPARTMENTS[0]);
+      queueMicrotask(() => setInviteDepartment(normalizedDepartments[0] ?? DEFAULT_DEPARTMENTS[0]));
     }
   }, [inviteDepartment, normalizedDepartments]);
 
   useEffect(() => {
     let cancelled = false;
-    setProfileStatus("loading");
-    setProfileMessage("");
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setProfileStatus("loading");
+      setProfileMessage("");
+    });
     void loadTeamProfilesFromSupabase()
       .then((result) => {
         if (cancelled) return;
@@ -2974,26 +2982,28 @@ export function SettingsPage({
   }, [currentUserId]);
 
   useEffect(() => {
-    setProfileDrafts((drafts) => {
-      const nextDrafts = { ...drafts };
-      const profileIds = new Set(profiles.map((profile) => profile.id));
+    queueMicrotask(() => {
+      setProfileDrafts((drafts) => {
+        const nextDrafts = { ...drafts };
+        const profileIds = new Set(profiles.map((profile) => profile.id));
 
-      profiles.forEach((profile) => {
-        if (!nextDrafts[profile.id]) {
-          nextDrafts[profile.id] = {
-            departmentName: profile.departmentName,
-            position: profile.position,
-          };
-        }
+        profiles.forEach((profile) => {
+          if (!nextDrafts[profile.id]) {
+            nextDrafts[profile.id] = {
+              departmentName: profile.departmentName,
+              position: profile.position,
+            };
+          }
+        });
+
+        Object.keys(nextDrafts).forEach((profileId) => {
+          if (!profileIds.has(profileId)) {
+            delete nextDrafts[profileId];
+          }
+        });
+
+        return nextDrafts;
       });
-
-      Object.keys(nextDrafts).forEach((profileId) => {
-        if (!profileIds.has(profileId)) {
-          delete nextDrafts[profileId];
-        }
-      });
-
-      return nextDrafts;
     });
   }, [profiles]);
 
@@ -3532,6 +3542,400 @@ export function SettingsPage({
       </section>
     </PageFrame>
   );
+}
+
+type MyTodoFormState = {
+  title: string;
+  memo: string;
+  dueDate: string;
+  priority: MyTodoPriority;
+  status: MyTodoStatus;
+};
+
+const emptyMyTodoForm: MyTodoFormState = {
+  title: "",
+  memo: "",
+  dueDate: "",
+  priority: "medium",
+  status: "not_started",
+};
+
+const myTodoPriorityOptions: Array<{ value: MyTodoPriority; label: string }> = [
+  { value: "high", label: "高" },
+  { value: "medium", label: "中" },
+  { value: "low", label: "低" },
+];
+
+const myTodoStatusOptions: Array<{ value: MyTodoStatus; label: string }> = [
+  { value: "not_started", label: "未着手" },
+  { value: "in_progress", label: "進行中" },
+  { value: "on_hold", label: "保留" },
+  { value: "done", label: "完了" },
+];
+
+export function MyTodoPage({
+  myTodos = [],
+  currentUserName = "ログインユーザー",
+  currentUserId = "local-user",
+  onCreateMyTodo,
+  onUpdateMyTodo,
+  onDeleteMyTodo,
+}: NavigateHandler) {
+  const [draft, setDraft] = useState<MyTodoFormState>(emptyMyTodoForm);
+  const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState<MyTodoFormState>(emptyMyTodoForm);
+  const [notice, setNotice] = useState("");
+  const activeTodos = useMemo(() => sortMyTodos(myTodos.filter((todo) => !todo.deletedAt)), [myTodos]);
+  const openTodos = activeTodos.filter((todo) => todo.status !== "done");
+  const highPriorityCount = openTodos.filter((todo) => todo.priority === "high").length;
+  const nearDueCount = openTodos.filter((todo) => isMyTodoNearDue(todo.dueDate)).length;
+  const editingTodo = editingTodoId ? activeTodos.find((todo) => todo.id === editingTodoId) : undefined;
+
+  const createTodo = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const title = draft.title.trim();
+    if (!title) {
+      setNotice("タイトルを入力してください。");
+      return;
+    }
+
+    const now = formatMyTodoDateTime(new Date());
+    onCreateMyTodo?.({
+      id: `mytodo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      userId: currentUserId,
+      title,
+      memo: draft.memo.trim(),
+      dueDate: draft.dueDate,
+      priority: draft.priority,
+      status: draft.status,
+      completedAt: draft.status === "done" ? now : undefined,
+      createdByName: currentUserName,
+      createdAt: now,
+      updatedAt: now,
+    });
+    setDraft(emptyMyTodoForm);
+    setNotice("MyToDoを登録しました。");
+  };
+
+  const startEdit = (todo: MyTodoEntry) => {
+    setEditingTodoId(todo.id);
+    setEditDraft({
+      title: todo.title,
+      memo: todo.memo,
+      dueDate: todo.dueDate,
+      priority: todo.priority,
+      status: todo.status,
+    });
+    setNotice("");
+  };
+
+  const saveEdit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editingTodo) return;
+    const title = editDraft.title.trim();
+    if (!title) {
+      setNotice("タイトルを入力してください。");
+      return;
+    }
+    const now = formatMyTodoDateTime(new Date());
+    onUpdateMyTodo?.({
+      ...editingTodo,
+      title,
+      memo: editDraft.memo.trim(),
+      dueDate: editDraft.dueDate,
+      priority: editDraft.priority,
+      status: editDraft.status,
+      completedAt: editDraft.status === "done" ? editingTodo.completedAt ?? now : undefined,
+      updatedAt: now,
+    });
+    setEditingTodoId(null);
+    setEditDraft(emptyMyTodoForm);
+    setNotice("MyToDoを更新しました。");
+  };
+
+  const updateTodoStatus = (todo: MyTodoEntry, status: MyTodoStatus) => {
+    const now = formatMyTodoDateTime(new Date());
+    onUpdateMyTodo?.({
+      ...todo,
+      status,
+      completedAt: status === "done" ? todo.completedAt ?? now : undefined,
+      updatedAt: now,
+    });
+    setNotice(status === "done" ? "完了にしました。" : "ステータスを更新しました。");
+  };
+
+  const updateTodoPriority = (todo: MyTodoEntry, priority: MyTodoPriority) => {
+    onUpdateMyTodo?.({ ...todo, priority, updatedAt: formatMyTodoDateTime(new Date()) });
+    setNotice("優先度を更新しました。");
+  };
+
+  const toggleDone = (todo: MyTodoEntry) => {
+    updateTodoStatus(todo, todo.status === "done" ? "not_started" : "done");
+  };
+
+  const deleteTodo = (todo: MyTodoEntry) => {
+    const now = formatMyTodoDateTime(new Date());
+    onDeleteMyTodo?.({ ...todo, deletedAt: now, updatedAt: now });
+    if (editingTodoId === todo.id) setEditingTodoId(null);
+    setNotice("MyToDoを削除しました。");
+  };
+
+  return (
+    <PageFrame title="MyToDo" lead="課題化・タスク化する前の個人ToDoとメモを管理します。承認フローには連動しません。">
+      <section className="grid gap-4 lg:grid-cols-3">
+        <PanelCard className="p-5">
+          <div className="flex items-center gap-3">
+            <div className="grid size-10 place-items-center rounded-lg bg-red-50 text-[#D6001C]">
+              <ListChecks size={20} />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-500">未完了</p>
+              <p className="text-2xl font-black text-slate-950">{openTodos.length}<span className="ml-1 text-sm text-slate-500">件</span></p>
+            </div>
+          </div>
+        </PanelCard>
+        <PanelCard className="p-5">
+          <div className="flex items-center gap-3">
+            <div className="grid size-10 place-items-center rounded-lg bg-orange-50 text-orange-600">
+              <CalendarDays size={20} />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-500">期限が近い</p>
+              <p className="text-2xl font-black text-slate-950">{nearDueCount}<span className="ml-1 text-sm text-slate-500">件</span></p>
+            </div>
+          </div>
+        </PanelCard>
+        <PanelCard className="p-5">
+          <div className="flex items-center gap-3">
+            <div className="grid size-10 place-items-center rounded-lg bg-blue-50 text-blue-600">
+              <ShieldCheck size={20} />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-500">高優先度</p>
+              <p className="text-2xl font-black text-slate-950">{highPriorityCount}<span className="ml-1 text-sm text-slate-500">件</span></p>
+            </div>
+          </div>
+        </PanelCard>
+      </section>
+
+      <section className="grid gap-5 xl:grid-cols-[420px_minmax(0,1fr)]">
+        <PanelCard className="p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="font-black">新規登録</h3>
+              <p className="mt-1 text-xs font-semibold text-slate-500">自分だけが見える個人メモです。</p>
+            </div>
+            <span className="rounded-md bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">承認対象外</span>
+          </div>
+          <form className="mt-5 grid gap-4" onSubmit={createTodo}>
+            <label className="grid gap-2 text-sm font-bold text-slate-700">
+              タイトル
+              <input className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.currentTarget.value })} placeholder="例: 明日の商談前に確認" />
+            </label>
+            <label className="grid gap-2 text-sm font-bold text-slate-700">
+              メモ
+              <textarea className="min-h-28 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={draft.memo} onChange={(event) => setDraft({ ...draft, memo: event.currentTarget.value })} placeholder="補足や忘れたくない内容" />
+            </label>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <label className="grid gap-2 text-sm font-bold text-slate-700">
+                期限
+                <input className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" type="date" value={draft.dueDate} onChange={(event) => setDraft({ ...draft, dueDate: event.currentTarget.value })} />
+              </label>
+              <label className="grid gap-2 text-sm font-bold text-slate-700">
+                優先度
+                <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: event.currentTarget.value as MyTodoPriority })}>
+                  {myTodoPriorityOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </label>
+              <label className="grid gap-2 text-sm font-bold text-slate-700">
+                ステータス
+                <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.currentTarget.value as MyTodoStatus })}>
+                  {myTodoStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </label>
+            </div>
+            <button className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#D6001C] px-4 py-3 text-sm font-black text-white shadow-sm hover:bg-[#b80018]" type="submit">
+              <Plus size={16} />
+              登録
+            </button>
+            {notice ? <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">{notice}</p> : null}
+          </form>
+        </PanelCard>
+
+        <div className="grid gap-5">
+          {editingTodo ? (
+            <PanelCard className="border-[#D6001C]/30 p-5">
+              <form className="grid gap-4" onSubmit={saveEdit}>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold text-[#D6001C]">編集中</p>
+                    <h3 className="mt-1 font-black">{editingTodo.title}</h3>
+                  </div>
+                  <button className="grid size-9 place-items-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50" type="button" aria-label="編集を閉じる" onClick={() => setEditingTodoId(null)}>
+                    <X size={16} />
+                  </button>
+                </div>
+                <label className="grid gap-2 text-sm font-bold text-slate-700">
+                  タイトル
+                  <input className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={editDraft.title} onChange={(event) => setEditDraft({ ...editDraft, title: event.currentTarget.value })} />
+                </label>
+                <label className="grid gap-2 text-sm font-bold text-slate-700">
+                  メモ
+                  <textarea className="min-h-24 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={editDraft.memo} onChange={(event) => setEditDraft({ ...editDraft, memo: event.currentTarget.value })} />
+                </label>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <label className="grid gap-2 text-sm font-bold text-slate-700">
+                    期限
+                    <input className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" type="date" value={editDraft.dueDate} onChange={(event) => setEditDraft({ ...editDraft, dueDate: event.currentTarget.value })} />
+                  </label>
+                  <label className="grid gap-2 text-sm font-bold text-slate-700">
+                    優先度
+                    <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={editDraft.priority} onChange={(event) => setEditDraft({ ...editDraft, priority: event.currentTarget.value as MyTodoPriority })}>
+                      {myTodoPriorityOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                  </label>
+                  <label className="grid gap-2 text-sm font-bold text-slate-700">
+                    ステータス
+                    <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={editDraft.status} onChange={(event) => setEditDraft({ ...editDraft, status: event.currentTarget.value as MyTodoStatus })}>
+                      {myTodoStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <button className="inline-flex items-center justify-center gap-2 rounded-lg bg-slate-950 px-4 py-3 text-sm font-black text-white hover:bg-slate-800" type="submit">
+                  <Save size={16} />
+                  保存
+                </button>
+              </form>
+            </PanelCard>
+          ) : null}
+
+          <PanelCard className="p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="font-black">MyToDo一覧</h3>
+                <p className="mt-1 text-xs font-semibold text-slate-500">Owner / Admin / Managerでも、ここでは本人分のみ表示します。</p>
+              </div>
+              <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-bold text-slate-600">{activeTodos.length}件</span>
+            </div>
+            <div className="mt-5 grid gap-3">
+              {activeTodos.map((todo) => (
+                <article key={todo.id} className="rounded-lg border border-slate-200 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <MyTodoPriorityBadge priority={todo.priority} />
+                        <MyTodoStatusBadge status={todo.status} />
+                        <span className={`text-xs font-bold ${isMyTodoOverdue(todo.dueDate, todo.status) ? "text-[#D6001C]" : "text-slate-500"}`}>{formatMyTodoDueDate(todo.dueDate)}</span>
+                      </div>
+                      <h4 className="mt-3 text-base font-black text-slate-950">{todo.title}</h4>
+                      {todo.memo ? <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{todo.memo}</p> : null}
+                      <p className="mt-3 text-xs font-semibold text-slate-400">
+                        作成者 {todo.createdByName} / 作成 {todo.createdAt} / 更新 {todo.updatedAt}
+                        {todo.completedAt ? ` / 完了 ${todo.completedAt}` : ""}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button className={`inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-black ${todo.status === "done" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"}`} type="button" onClick={() => toggleDone(todo)}>
+                        <CheckCircle2 size={14} />
+                        {todo.status === "done" ? "完了済み" : "完了"}
+                      </button>
+                      <button className="grid size-9 place-items-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50" type="button" aria-label="編集" onClick={() => startEdit(todo)}>
+                        <Pencil size={15} />
+                      </button>
+                      <button className="grid size-9 place-items-center rounded-lg border border-red-100 text-[#D6001C] hover:bg-red-50" type="button" aria-label="削除" onClick={() => deleteTodo(todo)}>
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    <label className="grid gap-1 text-xs font-bold text-slate-500">
+                      ステータス
+                      <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#D6001C]" value={todo.status} onChange={(event) => updateTodoStatus(todo, event.currentTarget.value as MyTodoStatus)}>
+                        {myTodoStatusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      </select>
+                    </label>
+                    <label className="grid gap-1 text-xs font-bold text-slate-500">
+                      優先度
+                      <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#D6001C]" value={todo.priority} onChange={(event) => updateTodoPriority(todo, event.currentTarget.value as MyTodoPriority)}>
+                        {myTodoPriorityOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                </article>
+              ))}
+              {activeTodos.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-slate-200 p-8 text-center">
+                  <p className="font-black text-slate-900">MyToDoはまだありません。</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-500">小さなメモや個人ToDoを登録できます。</p>
+                </div>
+              ) : null}
+            </div>
+          </PanelCard>
+        </div>
+      </section>
+    </PageFrame>
+  );
+}
+
+function sortMyTodos(todos: MyTodoEntry[]) {
+  return [...todos].sort((left, right) => {
+    const leftDone = left.status === "done";
+    const rightDone = right.status === "done";
+    if (leftDone !== rightDone) return leftDone ? 1 : -1;
+    const priorityDiff = getMyTodoPriorityRank(right.priority) - getMyTodoPriorityRank(left.priority);
+    if (priorityDiff !== 0) return priorityDiff;
+    const dueDiff = getMyTodoDueTime(left.dueDate) - getMyTodoDueTime(right.dueDate);
+    if (dueDiff !== 0) return dueDiff;
+    return right.updatedAt.localeCompare(left.updatedAt);
+  });
+}
+
+function getMyTodoPriorityRank(priority: MyTodoPriority) {
+  return priority === "high" ? 3 : priority === "medium" ? 2 : 1;
+}
+
+function getMyTodoDueTime(dueDate: string) {
+  if (!dueDate) return Number.MAX_SAFE_INTEGER;
+  const time = new Date(`${dueDate}T00:00:00`).getTime();
+  return Number.isFinite(time) ? time : Number.MAX_SAFE_INTEGER;
+}
+
+function isMyTodoNearDue(dueDate: string) {
+  if (!dueDate) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(`${dueDate}T00:00:00`);
+  const diffDays = Math.ceil((due.getTime() - today.getTime()) / 86_400_000);
+  return diffDays >= 0 && diffDays <= 3;
+}
+
+function isMyTodoOverdue(dueDate: string, status: MyTodoStatus) {
+  if (!dueDate || status === "done") return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return new Date(`${dueDate}T00:00:00`).getTime() < today.getTime();
+}
+
+function formatMyTodoDueDate(dueDate: string) {
+  if (!dueDate) return "期限なし";
+  const [year, month, day] = dueDate.split("-");
+  if (!year || !month || !day) return dueDate;
+  return `期限 ${month}/${day}`;
+}
+
+function MyTodoPriorityBadge({ priority }: { priority: MyTodoPriority }) {
+  const config = priority === "high"
+    ? { label: "高", className: "bg-red-50 text-red-700 ring-red-200" }
+    : priority === "medium"
+      ? { label: "中", className: "bg-orange-50 text-orange-700 ring-orange-200" }
+      : { label: "低", className: "bg-slate-100 text-slate-700 ring-slate-200" };
+  return <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-black ring-1 ${config.className}`}>優先度 {config.label}</span>;
+}
+
+function MyTodoStatusBadge({ status }: { status: MyTodoStatus }) {
+  const label = myTodoStatusOptions.find((option) => option.value === status)?.label ?? status;
+  const className = status === "done" ? "bg-emerald-50 text-emerald-700 ring-emerald-200" : status === "on_hold" ? "bg-slate-100 text-slate-700 ring-slate-200" : "bg-blue-50 text-blue-700 ring-blue-200";
+  return <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-black ring-1 ${className}`}>{label}</span>;
 }
 
 export function InboxPage() {
