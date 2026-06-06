@@ -3,9 +3,9 @@
 import { AuthUser, demoUsers } from "@/lib/auth-demo-data";
 import { makeDemoAuthUser } from "@/lib/auth/profile";
 import { canUseSupabaseBrowserClient } from "@/lib/supabase/client";
-import { signInWithPassword } from "@/lib/supabase/auth";
+import { consumeSupabaseRedirectSession, signInWithPassword, updateCurrentSupabasePassword } from "@/lib/supabase/auth";
 import { Building2, CheckCircle2, Eye, EyeOff, LockKeyhole, LogIn, Mail, ShieldCheck, Users } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) {
   const [companyCode, setCompanyCode] = useState("TAUROS");
@@ -16,9 +16,49 @@ export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) 
   const [message, setMessage] = useState("");
   const [loginMode, setLoginMode] = useState<"demo" | "supabase">(canUseSupabaseBrowserClient() ? "supabase" : "demo");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCheckingInvite, setIsCheckingInvite] = useState(false);
+  const [inviteUser, setInviteUser] = useState<AuthUser | null>(null);
+  const [invitePassword, setInvitePassword] = useState("");
+  const [invitePasswordConfirm, setInvitePasswordConfirm] = useState("");
+  const [isSettingInvitePassword, setIsSettingInvitePassword] = useState(false);
   const selectedUser = demoUsers.find((user) => user.id === selectedUserId) ?? demoUsers[0];
   const canLogin = Boolean(companyCode.trim() && email.trim() && password.trim());
   const supabaseEnabled = canUseSupabaseBrowserClient();
+  const canSetInvitePassword = invitePassword.length >= 8 && invitePassword === invitePasswordConfirm;
+
+  useEffect(() => {
+    if (!supabaseEnabled) return;
+
+    let cancelled = false;
+    setIsCheckingInvite(true);
+
+    void consumeSupabaseRedirectSession()
+      .then((result) => {
+        if (cancelled || !result.user) return;
+        setLoginMode("supabase");
+        setEmail(result.user.email);
+
+        if (result.isInvite) {
+          setInviteUser(result.user);
+          setMessage("招待リンクを確認しました。新しいパスワードを設定してください。");
+          return;
+        }
+
+        onLogin(result.user);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setMessage(error instanceof Error ? error.message : "招待リンクの確認に失敗しました。");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsCheckingInvite(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [onLogin, supabaseEnabled]);
 
   const selectDemoUser = (user: AuthUser) => {
     setSelectedUserId(user.id);
@@ -60,6 +100,28 @@ export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) 
     }
   };
 
+  const submitInvitePassword = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!inviteUser) return;
+
+    if (!canSetInvitePassword) {
+      setMessage("パスワードは8文字以上で、確認用と一致させてください。");
+      return;
+    }
+
+    setIsSettingInvitePassword(true);
+    setMessage("");
+
+    try {
+      await updateCurrentSupabasePassword(invitePassword);
+      onLogin(inviteUser);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "パスワード設定に失敗しました。");
+    } finally {
+      setIsSettingInvitePassword(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-[#F7F8FA] text-slate-950">
       <div className="grid min-h-screen lg:grid-cols-[minmax(420px,520px)_1fr]">
@@ -72,6 +134,47 @@ export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) 
                 <h1 className="text-2xl font-black tracking-tight">ログイン</h1>
               </div>
             </div>
+
+            {isCheckingInvite ? (
+              <p className="mt-5 rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold text-slate-500">
+                招待リンクを確認しています。
+              </p>
+            ) : null}
+
+            {inviteUser ? (
+              <form className="mt-5 grid gap-3 rounded-lg border border-red-100 bg-red-50 p-4" onSubmit={submitInvitePassword}>
+                <div>
+                  <p className="text-sm font-black text-[#D6001C]">初回パスワード設定</p>
+                  <p className="mt-1 text-xs font-bold leading-5 text-slate-600">
+                    {inviteUser.name} / {inviteUser.email}
+                  </p>
+                </div>
+                <label className="grid gap-2 text-sm font-bold text-slate-700">
+                  新しいパスワード
+                  <input
+                    className="h-11 w-full rounded-lg border border-slate-200 px-3 font-normal outline-none focus:border-[#D6001C] focus:ring-4 focus:ring-red-100"
+                    minLength={8}
+                    type="password"
+                    value={invitePassword}
+                    onChange={(event) => setInvitePassword(event.target.value)}
+                  />
+                </label>
+                <label className="grid gap-2 text-sm font-bold text-slate-700">
+                  新しいパスワード（確認）
+                  <input
+                    className="h-11 w-full rounded-lg border border-slate-200 px-3 font-normal outline-none focus:border-[#D6001C] focus:ring-4 focus:ring-red-100"
+                    minLength={8}
+                    type="password"
+                    value={invitePasswordConfirm}
+                    onChange={(event) => setInvitePasswordConfirm(event.target.value)}
+                  />
+                </label>
+                <button className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#D6001C] px-4 text-sm font-black text-white shadow-lg shadow-red-200 transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none" type="submit" disabled={!canSetInvitePassword || isSettingInvitePassword}>
+                  <CheckCircle2 size={16} />
+                  {isSettingInvitePassword ? "設定中" : "パスワードを設定して開始"}
+                </button>
+              </form>
+            ) : null}
 
             <form className="mt-7 grid gap-4" onSubmit={submitLogin}>
               <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1">

@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
         position,
         role,
       },
-      redirectTo: process.env.NEXT_PUBLIC_APP_URL ?? undefined,
+      redirectTo: getInviteRedirectUrl(),
     });
 
     if (invited.error || !invited.data.user) {
@@ -156,4 +156,13 @@ function getSupabaseServerEnv() {
   }
 
   return { url, publishableKey, serviceRoleKey };
+}
+
+function getInviteRedirectUrl() {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (!appUrl) return undefined;
+
+  const url = new URL(appUrl);
+  url.searchParams.set("auth", "invite");
+  return url.toString();
 }
