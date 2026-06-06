@@ -198,13 +198,17 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
   const activeCreatedIssues = useMemo(() => createdIssues.filter((issue) => !issue.deletedAt), [createdIssues]);
   const deletedCreatedIssues = useMemo(() => createdIssues.filter((issue) => issue.deletedAt), [createdIssues]);
   const allIssues = useMemo(() => [...activeCreatedIssues, ...pageDemo.issues], [activeCreatedIssues]);
-  const visibleIssues = allIssues.filter((issue) => !deletedIssueIds.includes(issue.id));
+  const visibleIssues = allIssues
+    .filter((issue) => !deletedIssueIds.includes(issue.id))
+    .filter((issue) => canViewIssueForUser(issue, currentUserName, currentUserId, appRole));
   const detailIssue = detailIssueId ? allIssues.find((issue) => issue.id === detailIssueId) : undefined;
   const editIssue = editIssueId ? createdIssues.find((issue) => issue.id === editIssueId) : undefined;
   const taskizeIssue = taskizeIssueId ? allIssues.find((issue) => issue.id === taskizeIssueId) : undefined;
   const pendingDeleteIssue = deleteIssueId ? allIssues.find((issue) => issue.id === deleteIssueId) : undefined;
-  const memberOptions = ["未選択", "山田 太郎", "山田 花子", "佐藤 一郎", "鈴木 太郎", "田中 美咲", "高橋 健"];
-  const canEditIssues = can(appRole, "issues", "update");
+  const memberOptions = useMemo(
+    () => uniquePersonOptions(["未選択", currentUserName, "山田 太郎", "山田 花子", "佐藤 一郎", "鈴木 太郎", "田中 美咲", "高橋 健"]),
+    [currentUserName],
+  );
   const canDeleteIssues = can(appRole, "issues", "delete");
   const detailPanelRef = useAutoScrollPanel(detailIssueId ? `${detailIssueId}-${panelScrollToken}` : null);
   const editPanelRef = useAutoScrollPanel(editIssueId ? `${editIssueId}-${panelScrollToken}` : null);
@@ -235,7 +239,7 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
 
   const openTaskize = (issueId: string) => {
     setTaskizeIssueId(issueId);
-    setResponsiblePerson(memberOptions.includes(currentUserName) ? currentUserName : "山田 太郎");
+    setResponsiblePerson(currentUserName || "山田 太郎");
     setAssigneePerson("未選択");
     setDetailIssueId(null);
     setEditIssueId(null);
@@ -363,6 +367,7 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
               {visibleIssues.map((issue) => {
                 const createdIssue = getCreatedIssue(issue);
                 const canEditThisIssue = createdIssue ? canEditCreatedIssue(createdIssue, currentUserName, appRole, currentUserId) : false;
+                const canTaskizeThisIssue = createdIssue ? canEditThisIssue : canViewAllWork(appRole);
                 return (
                   <tr key={issue.id} className="border-b border-slate-100 hover:bg-slate-50/70">
                     <td className="p-3 font-mono text-xs text-slate-500">{issue.id}</td>
@@ -387,7 +392,7 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
                             編集
                           </button>
                         ) : null}
-                        <button className="inline-flex h-10 min-w-[80px] items-center justify-center whitespace-nowrap rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:text-slate-300" type="button" disabled={!canEditIssues} onClick={() => openTaskize(issue.id)}>
+                        <button className="inline-flex h-10 min-w-[80px] items-center justify-center whitespace-nowrap rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:text-slate-300" type="button" disabled={!canTaskizeThisIssue} onClick={() => openTaskize(issue.id)}>
                           タスク化
                         </button>
                         <button className="inline-flex h-10 min-w-[56px] items-center justify-center whitespace-nowrap rounded-lg bg-slate-800 px-3 text-xs font-bold text-white hover:bg-slate-950 disabled:cursor-not-allowed disabled:bg-slate-300" type="button" disabled={!canDeleteIssues} onClick={() => openDeleteConfirm(issue.id)}>
@@ -721,10 +726,63 @@ function canEditCreatedTask(task: CreatedTaskEntry, currentUserName: string, app
   return canEditCreatedRecord(task, currentUserName, appRole, "tasks", currentUserId);
 }
 
-function isMyCreatedTask(task: CreatedTaskEntry, currentUserName: string, currentUserId?: string) {
-  if (task.createdById && currentUserId && task.createdById === currentUserId) return true;
-  return [task.assigneeName, task.assigneePerson, task.responsiblePerson, task.createdByName]
-    .some((name) => isSamePersonName(name, currentUserName));
+function canViewAllWork(appRole: AppRole) {
+  return can(appRole, "tasks", "manage") || normalizeOperationalRole(appRole) === "department_manager";
+}
+
+function canViewIssueForUser(issue: IssueListEntry, currentUserName: string, currentUserId: string | undefined, appRole: AppRole) {
+  if (canViewAllWork(appRole)) return true;
+  if ("createdById" in issue && issue.createdById && currentUserId && issue.createdById === currentUserId) return true;
+  if ("createdByName" in issue && isSamePersonName(issue.createdByName, currentUserName)) return true;
+  return isSamePersonName(issue.owner, currentUserName);
+}
+
+function isTaskVisibleForUser(task: TaskSummary | CreatedTaskEntry | SendbackTaskEntry, currentUserName: string, currentUserId: string | undefined, appRole: AppRole) {
+  if (canViewAllWork(appRole)) return true;
+  return isTaskRelatedToCurrentUser(task, currentUserName, currentUserId);
+}
+
+function isTaskRelatedToCurrentUser(task: TaskSummary | CreatedTaskEntry | SendbackTaskEntry, currentUserName: string, currentUserId?: string) {
+  if ("createdById" in task && task.createdById && currentUserId && task.createdById === currentUserId) return true;
+  if ("createdByName" in task && isSamePersonName(task.createdByName, currentUserName)) return true;
+  return isTaskAssigneeOrResponsible(task, currentUserName);
+}
+
+function canWorkOnTask(task: TaskSummary | CreatedTaskEntry | SendbackTaskEntry, currentUserName: string, _currentUserId: string | undefined, appRole: AppRole) {
+  if (canViewAllWork(appRole)) return true;
+  return isTaskAssigneeOrResponsible(task, currentUserName);
+}
+
+function canRequestApprovalForTask(task: TaskSummary | CreatedTaskEntry | SendbackTaskEntry, currentUserName: string, _currentUserId?: string) {
+  return isTaskAssigneeOrResponsible(task, currentUserName);
+}
+
+function isTaskAssigneeOrResponsible(task: TaskSummary | CreatedTaskEntry | SendbackTaskEntry, currentUserName: string) {
+  const responsiblePerson = "responsiblePerson" in task ? task.responsiblePerson : undefined;
+  const assigneePerson = "assigneePerson" in task ? task.assigneePerson : undefined;
+  return [task.assigneeName, responsiblePerson, assigneePerson].some((name) => isSamePersonName(name, currentUserName));
+}
+
+function getApprovalRequestDisabledReason(task: TaskSummary | CreatedTaskEntry | SendbackTaskEntry, progress: number, currentUserName: string, currentUserId?: string) {
+  if (progress < 100) return "進捗100%で承認申請できます";
+  if (!canRequestApprovalForTask(task, currentUserName, currentUserId)) return "承認申請は担当責任者または担当者のみ送信できます";
+  return undefined;
+}
+
+function uniquePersonOptions(options: string[]) {
+  const seen = new Set<string>();
+  return options.filter((option) => {
+    const normalized = normalizePersonName(option);
+    if (!normalized || seen.has(normalized)) return false;
+    seen.add(normalized);
+    return true;
+  });
+}
+
+function normalizeOperationalRole(role: AppRole): AppRole {
+  if (role === "executive" || role === "team_manager") return "department_manager";
+  if (role === "viewer") return "member";
+  return role;
 }
 
 function canEditCreatedRecord(
@@ -851,12 +909,18 @@ export function TasksPage({
   const activeCreatedTasks = useMemo(() => createdTasks.filter((task) => !task.deletedAt), [createdTasks]);
   const deletedCreatedTasks = useMemo(() => createdTasks.filter((task) => task.deletedAt), [createdTasks]);
   const allSendbackTasks = useMemo(() => [...sendbackTasks, ...sendbackTaskSummaries], [sendbackTasks]);
-  const allTaskSummaries = useMemo(() => [...myTasks, ...activeCreatedTasks, ...teamTaskSummaries, ...allSendbackTasks], [activeCreatedTasks, allSendbackTasks]);
-  const myCreatedTasks = useMemo(
-    () => activeCreatedTasks.filter((task) => isMyCreatedTask(task, currentUserName, currentUserId)),
-    [activeCreatedTasks, currentUserName, currentUserId],
+  const canViewTeamWork = canViewAllWork(appRole);
+  const allTaskSummaries = useMemo(() => {
+    const baseMyTasks = canViewTeamWork ? myTasks : myTasks.filter((task) => isTaskVisibleForUser(task, currentUserName, currentUserId, appRole));
+    const baseTeamTasks = canViewTeamWork ? teamTaskSummaries : teamTaskSummaries.filter((task) => isTaskVisibleForUser(task, currentUserName, currentUserId, appRole));
+    const visibleCreatedTasks = canViewTeamWork ? activeCreatedTasks : activeCreatedTasks.filter((task) => isTaskVisibleForUser(task, currentUserName, currentUserId, appRole));
+    const visibleSendbackTasks = canViewTeamWork ? allSendbackTasks : allSendbackTasks.filter((task) => isTaskVisibleForUser(task, currentUserName, currentUserId, appRole));
+    return [...baseMyTasks, ...visibleCreatedTasks, ...baseTeamTasks, ...visibleSendbackTasks];
+  }, [activeCreatedTasks, allSendbackTasks, appRole, canViewTeamWork, currentUserId, currentUserName]);
+  const myTaskSummaries = useMemo(
+    () => allTaskSummaries.filter((task) => isTaskRelatedToCurrentUser(task, currentUserName, currentUserId)),
+    [allTaskSummaries, currentUserId, currentUserName],
   );
-  const myTaskSummaries = useMemo(() => [...myTasks, ...myCreatedTasks], [myCreatedTasks]);
   const initialRecords = useMemo(() => buildInitialTaskRecords(allTaskSummaries), [allTaskSummaries]);
   const [taskRecords, setTaskRecords] = useState<Record<string, TaskRecord>>(initialRecords);
   const openTaskSummaries = useMemo(
@@ -924,11 +988,22 @@ export function TasksPage({
   };
 
   const openAction = (taskId: string, mode: "progress" | "approval") => {
+    const task = allTaskSummaries.find((item) => item.id === taskId);
+    if (!task) return;
+
+    if (mode === "progress" && !canWorkOnTask(task, currentUserName, currentUserId, appRole)) {
+      setSaveMessage("進捗報告は担当責任者・担当者、または管理権限のあるユーザーのみ実行できます。");
+      return;
+    }
+
     if (mode === "approval") {
-      const task = allTaskSummaries.find((item) => item.id === taskId);
       const record = task ? getTaskRecord(taskRecords, task) : taskRecords[taskId];
       if (!record || record.progress < 100) {
         setSaveMessage("承認申請は進捗100%になってから送信できます。先に進捗報告で100%にしてください。");
+        return;
+      }
+      if (!canRequestApprovalForTask(task, currentUserName, currentUserId)) {
+        setSaveMessage("承認申請は担当責任者または担当者のみ送信できます。");
         return;
       }
     }
@@ -994,6 +1069,10 @@ export function TasksPage({
     const persistenceTaskId = createdTaskDetails[taskId]?.supabaseId ?? taskId;
     const isResubmission = taskView === "sendback" || Boolean(sendbackTaskDetails[taskId]);
     const currentRecordBeforeRequest = task ? getTaskRecord(taskRecords, task) : taskRecords[taskId];
+    if (!task || !canRequestApprovalForTask(task, currentUserName, currentUserId)) {
+      setSaveMessage("承認申請は担当責任者または担当者のみ送信できます。");
+      return;
+    }
     if (!currentRecordBeforeRequest || currentRecordBeforeRequest.progress < 100) {
       setSaveMessage("承認申請は進捗100%になってから送信できます。先に進捗報告で100%にしてください。");
       return;
@@ -1092,7 +1171,8 @@ export function TasksPage({
           const sendbackDetail = sendbackTaskDetails[task.id];
           const createdTaskDetail = createdTaskDetails[task.id];
           const canEditThisTask = createdTaskDetail ? canEditCreatedTask(createdTaskDetail, currentUserName, appRole, currentUserId) : false;
-          const canRequestThisApproval = canCreateApprovals && record.progress >= 100;
+          const canUpdateThisTask = canUpdateTasks && canWorkOnTask(task, currentUserName, currentUserId, appRole);
+          const canRequestThisApproval = canCreateApprovals && record.progress >= 100 && canRequestApprovalForTask(task, currentUserName, currentUserId);
           const taskRegistrant = createdTaskDetail?.createdByName;
           const taskResponsiblePerson = createdTaskDetail?.responsiblePerson || task.assigneeName;
           const taskAssigneePerson =
@@ -1215,10 +1295,10 @@ export function TasksPage({
                     編集
                   </button>
                 ) : null}
-                <button className="inline-flex h-9 min-w-[96px] items-center justify-center whitespace-nowrap rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:text-slate-300" type="button" disabled={!canUpdateTasks} onClick={() => openAction(task.id, "progress")}>
+                <button className="inline-flex h-9 min-w-[96px] items-center justify-center whitespace-nowrap rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:text-slate-300" type="button" disabled={!canUpdateThisTask} onClick={() => openAction(task.id, "progress")}>
                   進捗報告
                 </button>
-                <button className="inline-flex h-9 min-w-[96px] items-center justify-center whitespace-nowrap rounded-lg bg-[#D6001C] px-3 text-xs font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300" type="button" disabled={!canRequestThisApproval} title={record.progress < 100 ? "進捗100%で承認申請できます" : undefined} onClick={() => openAction(task.id, "approval")}>
+                <button className="inline-flex h-9 min-w-[96px] items-center justify-center whitespace-nowrap rounded-lg bg-[#D6001C] px-3 text-xs font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300" type="button" disabled={!canRequestThisApproval} title={getApprovalRequestDisabledReason(task, record.progress, currentUserName, currentUserId)} onClick={() => openAction(task.id, "approval")}>
                   承認申請
                 </button>
                 {createdTaskDetail ? (
@@ -1229,6 +1309,9 @@ export function TasksPage({
               </div>
               {record.progress < 100 ? (
                 <p className="mt-2 text-xs font-bold text-slate-500">承認申請は進捗100%になってから送信できます。</p>
+              ) : null}
+              {record.progress >= 100 && !canRequestApprovalForTask(task, currentUserName, currentUserId) ? (
+                <p className="mt-2 text-xs font-bold text-slate-500">承認申請は担当責任者または担当者のみ送信できます。</p>
               ) : null}
             </PanelCard>
           );

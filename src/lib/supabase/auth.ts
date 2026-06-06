@@ -61,7 +61,7 @@ export async function consumeSupabaseRedirectSession(): Promise<SupabaseRedirect
 
   return {
     user: await loadAuthUserProfile(data.session.user.id),
-    isInvite: redirectState.isInvite || redirectState.isRedirect,
+    isInvite: redirectState.isInvite,
     isRedirect: true,
   };
 }
