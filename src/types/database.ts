@@ -364,6 +364,10 @@ export type Database = {
           due_date: string | null;
           priority: MyTodoPriority;
           status: MyTodoStatus;
+          source_type: string | null;
+          source_teams_todo_id: string | null;
+          assigned_by: string | null;
+          assigned_by_name: string | null;
           completed_at: string | null;
           created_at: string;
           updated_at: string;
@@ -377,6 +381,10 @@ export type Database = {
           due_date?: string | null;
           priority?: MyTodoPriority;
           status?: MyTodoStatus;
+          source_type?: string | null;
+          source_teams_todo_id?: string | null;
+          assigned_by?: string | null;
+          assigned_by_name?: string | null;
           completed_at?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -395,6 +403,10 @@ export type Database = {
           target_organization: string;
           created_by: string | null;
           created_by_name: string | null;
+          assignee_id: string | null;
+          assignee_name: string | null;
+          assigned_my_todo_id: string | null;
+          assigned_at: string | null;
           completed_at: string | null;
           created_at: string;
           updated_at: string;
@@ -410,6 +422,10 @@ export type Database = {
           target_organization: string;
           created_by?: string | null;
           created_by_name?: string | null;
+          assignee_id?: string | null;
+          assignee_name?: string | null;
+          assigned_my_todo_id?: string | null;
+          assigned_at?: string | null;
           completed_at?: string | null;
           created_at?: string;
           updated_at?: string;

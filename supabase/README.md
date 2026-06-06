@@ -65,12 +65,15 @@ Organization用のprofiles追加カラム、Leader権限、所属内TeamsToDoの
 
 ```text
 supabase/add_teams_todos_and_organization_20260606.sql
+supabase/add_teams_todo_assignments_20260606.sql
 ```
 
 - TeamsToDoはProject/tasks/approvalsとは別物です
 - 取得範囲はログインユーザーの `organization` / `department` に限定します
 - 登録・編集・削除はOwner / Admin / Manager / Leaderに限定します
 - Memberは所属TeamsToDoの閲覧のみです
+- 登録・編集時に所属内ユーザーを指名すると、指名先のMyToDoへ個別登録します
+- 指名先MyToDoは本人の `user_id` に紐づくため、Owner/Admin/Managerでも通常画面では中身を閲覧できません
 - 停止中/退職ユーザーはアプリ側ログイン時にもブロックします
 
 ## 7. ローカル確認

@@ -34,7 +34,7 @@ import { createActivityLogRecord, loadActivityLogsFromSupabase } from "@/lib/wor
 import { createApprovalRecord, loadApprovalRecordsFromSupabase, updateApprovalDecision, updateApprovalReview } from "@/lib/workspace/approval-record-store";
 import { createIssueRecord, createTaskRecord, loadCreatedRecordsFromSupabase, restoreIssueRecord, restoreTaskRecord, softDeleteIssueRecord, softDeleteTaskRecord, updateIssueRecord, updateTaskRecord } from "@/lib/workspace/created-record-store";
 import { DEPARTMENTS_STORAGE_KEY, DEFAULT_DEPARTMENTS, normalizeDepartmentList } from "@/lib/workspace/department-store";
-import { createMyTodoRecord, loadMyTodos, softDeleteMyTodoRecord, updateMyTodoRecord, type MyTodoEntry } from "@/lib/workspace/my-todo-store";
+import { createAssignedMyTodoRecord, createMyTodoRecord, formatMyTodoDateTime, loadMyTodos, softDeleteMyTodoRecord, updateMyTodoRecord, type MyTodoEntry } from "@/lib/workspace/my-todo-store";
 import { createNotificationRecord, loadNotificationsFromSupabase, markNotificationReadRecord, markNotificationsReadRecord, type AppNotificationEntry } from "@/lib/workspace/notification-store";
 import { createTeamsTodoRecord, loadTeamsTodos, softDeleteTeamsTodoRecord, updateTeamsTodoRecord, type TeamsTodoEntry } from "@/lib/workspace/teams-todo-store";
 import { AppRole } from "@/types/database";
@@ -543,14 +543,52 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
   const createTeamsTodo = async (todo: TeamsTodoEntry) => {
     const saved = await createTeamsTodoRecord(todo, currentUser?.id);
     setTeamsTodos((items) => [saved.entry, ...items.filter((item) => !isSameTeamsTodo(item, saved.entry))]);
+    void assignTeamsTodoToMyTodo(saved.entry);
   };
   const updateTeamsTodo = (todo: TeamsTodoEntry) => {
+    const previousTodo = teamsTodos.find((item) => isSameTeamsTodo(item, todo));
     setTeamsTodos((items) => items.map((item) => isSameTeamsTodo(item, todo) ? todo : item));
     void updateTeamsTodoRecord(todo, currentUser?.id);
+    if (todo.assigneeId && todo.assigneeId !== previousTodo?.assigneeId) {
+      void assignTeamsTodoToMyTodo(todo);
+    }
   };
   const deleteTeamsTodo = (todo: TeamsTodoEntry) => {
     setTeamsTodos((items) => items.map((item) => isSameTeamsTodo(item, todo) ? todo : item));
     void softDeleteTeamsTodoRecord(todo, currentUser?.id);
+  };
+  const assignTeamsTodoToMyTodo = async (todo: TeamsTodoEntry) => {
+    if (!todo.assigneeId || !todo.assigneeName || !currentUser) return;
+    const now = formatMyTodoDateTime(new Date());
+    const assignedTodo: MyTodoEntry = {
+      id: `assigned-${todo.id}-${todo.assigneeId}`,
+      userId: todo.assigneeId,
+      title: todo.title,
+      memo: buildAssignedMyTodoMemo(todo),
+      dueDate: todo.dueDate,
+      priority: todo.priority,
+      status: todo.status,
+      sourceType: "teams_todo",
+      sourceTeamsTodoId: todo.supabaseId ?? todo.id,
+      assignedById: currentUser.id,
+      assignedByName: currentUser.name,
+      createdByName: currentUser.name,
+      completedAt: todo.status === "done" ? now : undefined,
+      createdAt: now,
+      updatedAt: now,
+    };
+    const saved = await createAssignedMyTodoRecord(assignedTodo, currentUser.id);
+    if (saved.entry.userId === currentUser.id) {
+      setMyTodos((items) => [saved.entry, ...items.filter((item) => !isSameMyTodo(item, saved.entry))]);
+    }
+    const assignedTeamsTodo = {
+      ...todo,
+      assignedMyTodoId: saved.entry.supabaseId ?? saved.entry.id,
+      assignedAt: now,
+      updatedAt: now,
+    };
+    setTeamsTodos((items) => items.map((item) => isSameTeamsTodo(item, assignedTeamsTodo) ? assignedTeamsTodo : item));
+    void updateTeamsTodoRecord(assignedTeamsTodo, currentUser.id);
   };
   const completeCreate = async (payload: CreateDrawerPayload) => {
     const issue: CreatedIssueEntry = {
@@ -1095,6 +1133,14 @@ function isSameMyTodo(left: MyTodoEntry, right: MyTodoEntry) {
 
 function isSameTeamsTodo(left: TeamsTodoEntry, right: TeamsTodoEntry) {
   return isSameRecord(left, right);
+}
+
+function buildAssignedMyTodoMemo(todo: TeamsTodoEntry) {
+  return [
+    todo.memo,
+    `所属ToDoから指名: ${todo.targetOrganization}`,
+    todo.assigneeName ? `指名先: ${todo.assigneeName}` : "",
+  ].filter(Boolean).join("\n");
 }
 
 function createClientId(prefix: string) {

@@ -4182,12 +4182,16 @@ export function MyTodoPage({
                       <div className="flex flex-wrap items-center gap-2">
                         <MyTodoPriorityBadge priority={todo.priority} />
                         <MyTodoStatusBadge status={todo.status} />
+                        {todo.sourceType === "teams_todo" ? (
+                          <span className="inline-flex rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-black text-emerald-700 ring-1 ring-emerald-200">所属ToDoから指名</span>
+                        ) : null}
                         <span className={`text-xs font-bold ${isMyTodoOverdue(todo.dueDate, todo.status) ? "text-[#D6001C]" : "text-slate-500"}`}>{formatMyTodoDueDate(todo.dueDate)}</span>
                       </div>
                       <h4 className="mt-3 text-base font-black text-slate-950">{todo.title}</h4>
                       {todo.memo ? <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{todo.memo}</p> : null}
                       <p className="mt-3 text-xs font-semibold text-slate-400">
                         作成者 {todo.createdByName} / 作成 {todo.createdAt} / 更新 {todo.updatedAt}
+                        {todo.assignedByName ? ` / 指名者 ${todo.assignedByName}` : ""}
                         {todo.completedAt ? ` / 完了 ${todo.completedAt}` : ""}
                       </p>
                     </div>
@@ -4257,12 +4261,37 @@ function TeamsTodoSection({
   onDeleteTeamsTodo,
 }: NavigateHandler) {
   const [draft, setDraft] = useState<MyTodoFormState>(emptyMyTodoForm);
+  const [assigneeId, setAssigneeId] = useState("");
   const [editingTodoId, setEditingTodoId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<MyTodoFormState>(emptyMyTodoForm);
+  const [editAssigneeId, setEditAssigneeId] = useState("");
+  const [teamProfiles, setTeamProfiles] = useState<TeamProfileEntry[]>(demoUsersToProfiles());
   const [notice, setNotice] = useState("");
   const activeTeamsTodos = useMemo(() => sortTeamsTodos(teamsTodos.filter((todo) => !todo.deletedAt)), [teamsTodos]);
   const editingTodo = editingTodoId ? activeTeamsTodos.find((todo) => todo.id === editingTodoId) : undefined;
   const canManageTeamsTodo = can(appRole, "teams_todo", "create");
+  const assigneeOptions = useMemo(
+    () => teamProfiles.filter((profile) => profile.isActive && getProfileOrganization(profile) === currentUserDepartment),
+    [currentUserDepartment, teamProfiles],
+  );
+  const selectedAssignee = assigneeOptions.find((profile) => profile.id === assigneeId);
+  const selectedEditAssignee = assigneeOptions.find((profile) => profile.id === editAssigneeId);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadTeamProfilesFromSupabase()
+      .then((result) => {
+        if (!cancelled) setTeamProfiles(result.profiles.length ? result.profiles : demoUsersToProfiles());
+      })
+      .catch((error) => {
+        console.warn("TeamsToDo assignee profile load failed.", error);
+        if (!cancelled) setTeamProfiles(demoUsersToProfiles());
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const createTodo = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -4285,6 +4314,9 @@ function TeamsTodoSection({
       priority: draft.priority,
       status: draft.status,
       targetOrganization: currentUserDepartment || "未設定",
+      assigneeId: selectedAssignee?.id,
+      assigneeName: selectedAssignee?.displayName,
+      assignedAt: selectedAssignee ? now : undefined,
       createdById: currentUserId,
       createdByName: currentUserName,
       completedAt: draft.status === "done" ? now : undefined,
@@ -4292,7 +4324,8 @@ function TeamsTodoSection({
       updatedAt: now,
     });
     setDraft(emptyMyTodoForm);
-    setNotice("TeamsToDoを登録しました。");
+    setAssigneeId("");
+    setNotice(selectedAssignee ? `TeamsToDoを登録し、${selectedAssignee.displayName}さんのMyToDoへ入れます。` : "TeamsToDoを登録しました。");
   };
 
   const startEdit = (todo: TeamsTodoEntry) => {
@@ -4305,6 +4338,7 @@ function TeamsTodoSection({
       priority: todo.priority,
       status: todo.status,
     });
+    setEditAssigneeId(todo.assigneeId ?? "");
     setNotice("");
   };
 
@@ -4325,12 +4359,17 @@ function TeamsTodoSection({
       dueDate: editDraft.dueDate,
       priority: editDraft.priority,
       status: editDraft.status,
+      assigneeId: selectedEditAssignee?.id,
+      assigneeName: selectedEditAssignee?.displayName,
+      assignedAt: selectedEditAssignee ? editingTodo.assignedAt ?? now : undefined,
+      assignedMyTodoId: selectedEditAssignee?.id === editingTodo.assigneeId ? editingTodo.assignedMyTodoId : undefined,
       completedAt: editDraft.status === "done" ? editingTodo.completedAt ?? now : undefined,
       updatedAt: now,
     });
     setEditingTodoId(null);
     setEditDraft(emptyMyTodoForm);
-    setNotice("TeamsToDoを更新しました。");
+    setEditAssigneeId("");
+    setNotice(selectedEditAssignee ? `TeamsToDoを更新し、${selectedEditAssignee.displayName}さんのMyToDoへ入れます。` : "TeamsToDoを更新しました。");
   };
 
   const updateTodoStatus = (todo: TeamsTodoEntry, status: MyTodoStatus) => {
@@ -4391,10 +4430,19 @@ function TeamsTodoSection({
             メモ
             <textarea className="min-h-28 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C] disabled:bg-slate-50" value={draft.memo} disabled={!canManageTeamsTodo} onChange={(event) => setDraft({ ...draft, memo: event.currentTarget.value })} placeholder="課題化する前の共有メモ" />
           </label>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <label className="grid gap-2 text-sm font-bold text-slate-700">
               期限
               <input className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C] disabled:bg-slate-50" type="date" value={draft.dueDate} disabled={!canManageTeamsTodo} onChange={(event) => setDraft({ ...draft, dueDate: event.currentTarget.value })} />
+            </label>
+            <label className="grid gap-2 text-sm font-bold text-slate-700">
+              指名先
+              <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C] disabled:bg-slate-50" value={assigneeId} disabled={!canManageTeamsTodo} onChange={(event) => setAssigneeId(event.currentTarget.value)}>
+                <option value="">指名なし</option>
+                {assigneeOptions.map((profile) => (
+                  <option key={`assignee-${profile.id}`} value={profile.id}>{profile.displayName} / {profile.position}</option>
+                ))}
+              </select>
             </label>
             <label className="grid gap-2 text-sm font-bold text-slate-700">
               優先度
@@ -4438,10 +4486,19 @@ function TeamsTodoSection({
                 メモ
                 <textarea className="min-h-24 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={editDraft.memo} onChange={(event) => setEditDraft({ ...editDraft, memo: event.currentTarget.value })} />
               </label>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <label className="grid gap-2 text-sm font-bold text-slate-700">
                   期限
                   <input className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" type="date" value={editDraft.dueDate} onChange={(event) => setEditDraft({ ...editDraft, dueDate: event.currentTarget.value })} />
+                </label>
+                <label className="grid gap-2 text-sm font-bold text-slate-700">
+                  指名先
+                  <select className="rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" value={editAssigneeId} onChange={(event) => setEditAssigneeId(event.currentTarget.value)}>
+                    <option value="">指名なし</option>
+                    {assigneeOptions.map((profile) => (
+                      <option key={`edit-assignee-${profile.id}`} value={profile.id}>{profile.displayName} / {profile.position}</option>
+                    ))}
+                  </select>
                 </label>
                 <label className="grid gap-2 text-sm font-bold text-slate-700">
                   優先度
@@ -4480,12 +4537,16 @@ function TeamsTodoSection({
                     <div className="flex flex-wrap items-center gap-2">
                       <MyTodoPriorityBadge priority={todo.priority} />
                       <MyTodoStatusBadge status={todo.status} />
+                      {todo.assigneeName ? (
+                        <span className="inline-flex rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-black text-emerald-700 ring-1 ring-emerald-200">指名先 {todo.assigneeName}</span>
+                      ) : null}
                       <span className={`text-xs font-bold ${isMyTodoOverdue(todo.dueDate, todo.status) ? "text-[#D6001C]" : "text-slate-500"}`}>{formatMyTodoDueDate(todo.dueDate)}</span>
                     </div>
                     <h4 className="mt-3 text-base font-black text-slate-950">{todo.title}</h4>
                     {todo.memo ? <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-600">{todo.memo}</p> : null}
                     <p className="mt-3 text-xs font-semibold text-slate-400">
                       作成者: {todo.createdByName} / 対象: {todo.targetOrganization} / 作成 {todo.createdAt} / 更新 {todo.updatedAt}
+                      {todo.assignedMyTodoId ? ` / MyToDo登録済み` : ""}
                       {todo.completedAt ? ` / 完了 ${todo.completedAt}` : ""}
                     </p>
                   </div>

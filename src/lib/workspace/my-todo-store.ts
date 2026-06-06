@@ -15,6 +15,10 @@ export type MyTodoEntry = {
   dueDate: string;
   priority: MyTodoPriority;
   status: MyTodoStatus;
+  sourceType?: "personal" | "teams_todo";
+  sourceTeamsTodoId?: string;
+  assignedById?: string;
+  assignedByName?: string;
   createdByName: string;
   createdAt: string;
   updatedAt: string;
@@ -130,6 +134,10 @@ export async function createMyTodoRecord(todo: MyTodoEntry, userId?: string) {
     status: scopedTodo.status,
     completed_at: scopedTodo.completedAt ?? null,
   };
+  if (scopedTodo.sourceType) payload.source_type = scopedTodo.sourceType;
+  if (scopedTodo.sourceTeamsTodoId) payload.source_teams_todo_id = scopedTodo.sourceTeamsTodoId;
+  if (scopedTodo.assignedById) payload.assigned_by = scopedTodo.assignedById;
+  if (scopedTodo.assignedByName) payload.assigned_by_name = scopedTodo.assignedByName;
   const myTodosTable = supabase.from("my_todos") as unknown as InsertTable<MyTodoInsert>;
   const { data, error } = await myTodosTable.insert(payload).select("id").single();
 
@@ -139,6 +147,56 @@ export async function createMyTodoRecord(todo: MyTodoEntry, userId?: string) {
   }
 
   const savedTodo = { ...scopedTodo, supabaseId: data.id };
+  saveLocalMyTodo(savedTodo);
+  return { entry: savedTodo, target: "supabase" as SaveTarget };
+}
+
+export async function createAssignedMyTodoRecord(todo: MyTodoEntry, requesterUserId?: string) {
+  const scopedTodo = { ...todo, userId: todo.userId };
+  saveLocalMyTodo(scopedTodo);
+
+  if (!canUseSupabaseBrowserClient() || !isSupabaseUuid(scopedTodo.userId)) {
+    return { entry: scopedTodo, target: "localStorage" as SaveTarget };
+  }
+
+  if (requesterUserId === scopedTodo.userId) {
+    return createMyTodoRecord(scopedTodo, scopedTodo.userId);
+  }
+
+  const supabase = createSupabaseBrowserClient();
+  const { data } = await supabase.auth.getSession();
+  const accessToken = data.session?.access_token;
+  if (!accessToken) {
+    return { entry: scopedTodo, target: "localStorage" as SaveTarget };
+  }
+
+  const response = await fetch("/api/workspace/assign-my-todo", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      assigneeId: scopedTodo.userId,
+      title: scopedTodo.title,
+      memo: scopedTodo.memo,
+      dueDate: scopedTodo.dueDate,
+      priority: scopedTodo.priority,
+      status: scopedTodo.status,
+      sourceTeamsTodoId: scopedTodo.sourceTeamsTodoId,
+      assignedByName: scopedTodo.assignedByName,
+    }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    console.warn("Supabase assigned MyToDo insert failed. Keeping local record.", result);
+    return { entry: scopedTodo, target: "localStorage" as SaveTarget };
+  }
+
+  const savedTodo = {
+    ...scopedTodo,
+    supabaseId: result.todo?.id ?? result.todo?.supabaseId,
+  };
   saveLocalMyTodo(savedTodo);
   return { entry: savedTodo, target: "supabase" as SaveTarget };
 }
@@ -230,6 +288,10 @@ function rowToMyTodoEntry(row: MyTodoRow): MyTodoEntry {
     dueDate: row.due_date ?? "",
     priority: row.priority,
     status: row.status,
+    sourceType: row.source_type === "teams_todo" ? "teams_todo" : "personal",
+    sourceTeamsTodoId: row.source_teams_todo_id ?? undefined,
+    assignedById: row.assigned_by ?? undefined,
+    assignedByName: row.assigned_by_name ?? undefined,
     createdByName: "ログインユーザー",
     createdAt: formatMyTodoDateTime(new Date(row.created_at)),
     updatedAt: formatMyTodoDateTime(new Date(row.updated_at)),

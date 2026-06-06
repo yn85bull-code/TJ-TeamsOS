@@ -49,6 +49,7 @@ TeamsToDoは、課題化やProject化する前の所属共有ToDoです。
 - MyToDoページ内の `所属ToDo` タブで利用
 - Owner / Admin / Manager / Leaderは所属内TeamsToDoを登録・編集・削除可能
 - Memberは所属内TeamsToDoを閲覧のみ
+- 登録・編集時に所属内メンバーを指名でき、指名された人のMyToDoへ個別登録される
 - 通常画面ではOwner/Adminでも本人の所属TeamsToDoだけを表示
 - 承認申請、Manager確認、Owner/Admin承認、差し戻しとは連動しない
 
@@ -57,6 +58,7 @@ Supabase SQL:
 ```text
 supabase/add_my_todos_20260606.sql
 supabase/add_teams_todos_and_organization_20260606.sql
+supabase/add_teams_todo_assignments_20260606.sql
 ```
 
 ## TaurosAI

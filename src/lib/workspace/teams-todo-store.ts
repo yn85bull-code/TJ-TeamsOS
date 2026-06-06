@@ -13,6 +13,10 @@ export type TeamsTodoEntry = {
   priority: MyTodoPriority;
   status: MyTodoStatus;
   targetOrganization: string;
+  assigneeId?: string;
+  assigneeName?: string;
+  assignedMyTodoId?: string;
+  assignedAt?: string;
   createdById?: string;
   createdByName: string;
   createdAt: string;
@@ -117,6 +121,10 @@ export async function createTeamsTodoRecord(todo: TeamsTodoEntry, userId?: strin
     created_by_name: todo.createdByName,
     completed_at: todo.completedAt ?? null,
   };
+  if (todo.assigneeId) payload.assignee_id = todo.assigneeId;
+  if (todo.assigneeName) payload.assignee_name = todo.assigneeName;
+  if (todo.assignedMyTodoId) payload.assigned_my_todo_id = todo.assignedMyTodoId;
+  if (todo.assignedAt) payload.assigned_at = toSupabaseTimestamp(todo.assignedAt);
   const supabase = createSupabaseBrowserClient();
   const teamsTodosTable = supabase.from("teams_todos") as unknown as InsertTable<TeamsTodoInsert>;
   const { data, error } = await teamsTodosTable.insert(payload).select("id").single();
@@ -148,6 +156,10 @@ export async function updateTeamsTodoRecord(todo: TeamsTodoEntry, userId?: strin
     completed_at: todo.completedAt ?? null,
     updated_at: new Date().toISOString(),
   };
+  if (todo.assigneeId) payload.assignee_id = todo.assigneeId;
+  if (todo.assigneeName) payload.assignee_name = todo.assigneeName;
+  if (todo.assignedMyTodoId) payload.assigned_my_todo_id = todo.assignedMyTodoId;
+  if (todo.assignedAt) payload.assigned_at = toSupabaseTimestamp(todo.assignedAt);
   const supabase = createSupabaseBrowserClient();
   const teamsTodosTable = supabase.from("teams_todos") as unknown as UpdateOwnOrganizationTable<TeamsTodoUpdate>;
   const { error } = await teamsTodosTable.update(payload).eq("id", todoId).eq("target_organization", todo.targetOrganization);
@@ -221,6 +233,10 @@ function rowToTeamsTodoEntry(row: TeamsTodoRow): TeamsTodoEntry {
     priority: row.priority,
     status: row.status,
     targetOrganization: row.target_organization,
+    assigneeId: row.assignee_id ?? undefined,
+    assigneeName: row.assignee_name ?? undefined,
+    assignedMyTodoId: row.assigned_my_todo_id ?? undefined,
+    assignedAt: row.assigned_at ? formatMyTodoDateTime(new Date(row.assigned_at)) : undefined,
     createdById: row.created_by ?? undefined,
     createdByName: row.created_by_name ?? "ログインユーザー",
     createdAt: formatMyTodoDateTime(new Date(row.created_at)),
@@ -232,6 +248,12 @@ function rowToTeamsTodoEntry(row: TeamsTodoRow): TeamsTodoEntry {
 
 function canSaveToSupabase(userId?: string) {
   return Boolean(userId && isSupabaseUuid(userId) && canUseSupabaseBrowserClient());
+}
+
+function toSupabaseTimestamp(value?: string) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
 function isValidTeamsTodoEntry(value: unknown): value is TeamsTodoEntry {

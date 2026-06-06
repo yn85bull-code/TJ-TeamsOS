@@ -398,6 +398,7 @@ export function MyTodoDashboardPanel({ onNavigate, myTodos = [], teamsTodos = []
               <div>
                 <p className="line-clamp-2 text-sm font-bold text-slate-900">{todo.title}</p>
                 <p className="mt-1 text-[11px] font-bold text-slate-500">{todo.targetOrganization}</p>
+                {todo.assigneeName ? <p className="mt-1 text-[11px] font-black text-emerald-700">指名先 {todo.assigneeName}</p> : null}
               </div>
               <MyTodoPriorityBadge priority={todo.priority} />
             </div>
