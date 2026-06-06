@@ -219,6 +219,7 @@ export function MyTasksPanel({ onNavigate, createdTasks = [], currentUserName = 
   const [activeFilter, setActiveFilter] = useState<"today" | "week" | "overdue">("today");
   const normalizedRole = normalizeAppRole(appRole);
   const canViewDemoTasks = normalizedRole === "owner" || normalizedRole === "admin";
+  const canOpenTasksPage = canAccessNavItem(appRole, "tasks");
   const relatedDemoTasks = canViewDemoTasks ? myTasks : myTasks.filter((task) => isSamePersonName(task.assigneeName, currentUserName));
   const relatedTasks = [...relatedDemoTasks, ...createdTasks];
   const taskFilters: Array<{ key: "today" | "week" | "overdue"; label: string; tasks: TaskSummary[] }> = [
@@ -252,10 +253,12 @@ export function MyTasksPanel({ onNavigate, createdTasks = [], currentUserName = 
         ))}
         {activeTasks.length === 0 ? <p className="rounded-lg bg-slate-50 p-4 text-sm font-semibold text-slate-500">該当するタスクはありません。</p> : null}
       </div>
-      <button className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-slate-800" type="button" onClick={() => onNavigate("tasks")}>
-        すべてのタスクを見る
-        <ArrowRight size={15} />
-      </button>
+      {canOpenTasksPage ? (
+        <button className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-slate-800" type="button" onClick={() => onNavigate("tasks")}>
+          すべてのタスクを見る
+          <ArrowRight size={15} />
+        </button>
+      ) : null}
     </PanelCard>
   );
 }
