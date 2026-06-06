@@ -27,6 +27,7 @@ import {
   CircleAlert,
   Filter,
   Flag,
+  GitBranch,
   Mail,
   ShieldCheck,
   Smartphone,
@@ -74,6 +75,7 @@ export function DashboardPage({ onNavigate, createdTasks = [], createdIssues = [
       </section>
 
       <KpiSummaryGrid onNavigate={onNavigate} createdTasks={visibleCreatedTasks} createdIssues={visibleCreatedIssues} appRole={appRole} />
+      <ImplementationRoadmapCard onNavigate={onNavigate} appRole={appRole} />
 
       <section className={`grid gap-5 ${canViewTeamSummary ? "xl:grid-cols-[1.05fr_1.35fr_0.75fr]" : "xl:grid-cols-[1fr_0.85fr]"}`}>
         <MyTasksPanel onNavigate={onNavigate} createdTasks={visibleCreatedTasks} currentUserName={currentUserName} appRole={appRole} />
@@ -212,6 +214,80 @@ export function KpiCard({ kpi, onClick }: { kpi: DashboardKpi; onClick: () => vo
         <ProgressBar value={kpi.progress} tone={colors.bar} />
       </div>
     </button>
+  );
+}
+
+export function ImplementationRoadmapCard({ onNavigate, appRole = "member" }: DashboardPageProps) {
+  const projectTodoTarget = canAccessNavItem(appRole, "issues") ? "issues" : "my_todo";
+  const roadmapItems = [
+    {
+      phase: "Priority 1",
+      title: "Project / Task / ToDo",
+      description: "まず本来のProjectからTask処理、MyToDo/TeamToDoを実装の中心にします。",
+      target: projectTodoTarget,
+      status: "実装優先",
+      icon: Flag,
+    },
+    {
+      phase: "Priority 2",
+      title: "TaurosAI",
+      description: "社内ナレッジ、マニュアル、FAQ、業務ルールの質問精度を高めます。",
+      target: "tauros_ai",
+      status: "順次改修",
+      icon: Bot,
+    },
+    {
+      phase: "Future",
+      title: "Calendar",
+      description: "TeamOSを基幹にして、Google Calendar同期を後から追加します。",
+      target: "calendar",
+      status: "今後実装予定",
+      icon: CalendarDays,
+    },
+    {
+      phase: "Future",
+      title: "Workflow",
+      description: "申請、添付、複数承認、条件分岐、差し戻しを段階的に作ります。",
+      target: "workflow",
+      status: "今後実装予定",
+      icon: GitBranch,
+    },
+    {
+      phase: "Future",
+      title: "AI Suggestions / 通知",
+      description: "Gmail、LINE、予定、申請通知をAI提案として整理します。",
+      target: "ai",
+      status: "順次改修",
+      icon: Mail,
+    },
+  ].filter((item) => canAccessNavItem(appRole, item.target));
+
+  return (
+    <PanelCard className="p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="font-black text-slate-950">実装ロードマップ</h3>
+          <p className="mt-1 text-sm leading-6 text-slate-500">Dashboard / Calendar / Workflowは土台を置き、まずProject・Task・ToDoを固めます。</p>
+        </div>
+        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">今後実装予定を含む</span>
+      </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        {roadmapItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <button key={item.title} className="rounded-lg border border-slate-200 bg-white p-4 text-left transition hover:border-[#D6001C] hover:shadow-sm" type="button" onClick={() => onNavigate(item.target)}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="rounded-full bg-red-50 px-2.5 py-1 text-[11px] font-black text-[#D6001C]">{item.phase}</span>
+                <Icon className="text-slate-500" size={17} />
+              </div>
+              <h4 className="mt-3 text-sm font-black text-slate-950">{item.title}</h4>
+              <p className="mt-2 min-h-16 text-xs leading-5 text-slate-500">{item.description}</p>
+              <span className="mt-3 inline-flex rounded-md bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-600">{item.status}</span>
+            </button>
+          );
+        })}
+      </div>
+    </PanelCard>
   );
 }
 

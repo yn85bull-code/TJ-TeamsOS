@@ -10,7 +10,7 @@ import { type TeamsTodoEntry } from "@/lib/workspace/teams-todo-store";
 import { DEFAULT_DEPARTMENTS, normalizeDepartmentList } from "@/lib/workspace/department-store";
 import { OPERATIONAL_ROLE_OPTIONS, TeamProfileEntry, demoUsersToProfiles, getRoleLabel, inviteTeamUser, loadTeamProfilesFromSupabase, uploadProfileAvatarFileInSupabase, updateProfileDepartmentAndPositionInSupabase, updateProfileEmploymentStatusInSupabase, updateProfileRoleInSupabase } from "@/lib/workspace/profile-store";
 import { AppRole } from "@/types/database";
-import { BookOpen, Bot, Building2, CalendarDays, CheckCircle2, ClipboardList, Clock, Database, FileText, Inbox, ListChecks, LockKeyhole, Pencil, Plus, Save, Search, Send, ShieldCheck, Trash2, Upload, Users, X } from "lucide-react";
+import { BookOpen, Bot, Building2, CalendarDays, CheckCircle2, ClipboardList, Clock, Database, FileText, GitBranch, Inbox, ListChecks, LockKeyhole, Pencil, Plus, Save, Search, Send, ShieldCheck, Trash2, Upload, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type NavigateHandler = {
@@ -3045,6 +3045,148 @@ function getRoleDisplayLabel(role: AppRole) {
   return "Member";
 }
 
+const calendarFoundationItems = [
+  {
+    title: "TeamOS予定管理",
+    description: "TeamOSを予定データの正として、個人予定・部門予定・全社予定を管理する土台です。",
+    icon: CalendarDays,
+  },
+  {
+    title: "Google Calendar同期",
+    description: "TeamOSで作成した予定をGoogle Calendarへ同期し、スマホ通知や外部共有に使う構想です。",
+    icon: Clock,
+  },
+  {
+    title: "業務連動",
+    description: "Project、Task、MyToDo、Workflowと予定を紐づけ、作業予定と締切を一体で確認します。",
+    icon: Database,
+  },
+];
+
+const workflowFoundationItems = [
+  {
+    title: "申請フォーム",
+    description: "稟議、購入、契約、社内確認など、申請種別ごとのフォームをTeamOS内に持たせます。",
+    icon: FileText,
+  },
+  {
+    title: "複数承認ルート",
+    description: "内容、金額、部門、添付有無に応じて、Manager確認、Admin承認、Owner最終決裁へ分岐します。",
+    icon: GitBranch,
+  },
+  {
+    title: "添付と履歴",
+    description: "添付ファイル、差し戻し理由、承認コメント、監査ログを履歴として残します。",
+    icon: ShieldCheck,
+  },
+];
+
+export function CalendarPage() {
+  const previewDays = ["月", "火", "水", "木", "金"];
+
+  return (
+    <PageFrame title="Calendar" lead="TeamOSを基幹にした社内予定管理の土台です。Google Calendar連携は今後実装予定です。">
+      <PanelCard className="p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">今後実装予定</span>
+            <h3 className="mt-4 text-xl font-black text-slate-950">TeamOS Calendar Foundation</h3>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+              予定の登録元はTeamOSに置き、Google Calendarには通知・スマホ表示・外部共有用として同期する方針です。
+            </p>
+          </div>
+          <span className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-black text-slate-600">Phase 2</span>
+        </div>
+      </PanelCard>
+
+      <div className="grid gap-4 xl:grid-cols-3">
+        {calendarFoundationItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <PanelCard key={item.title} className="p-5">
+              <div className="grid size-10 place-items-center rounded-lg bg-red-50 text-[#D6001C]">
+                <Icon size={19} />
+              </div>
+              <h3 className="mt-4 font-black text-slate-950">{item.title}</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-500">{item.description}</p>
+            </PanelCard>
+          );
+        })}
+      </div>
+
+      <PanelCard className="p-5">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="font-black text-slate-950">週間予定プレビュー</h3>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500">表示サンプル</span>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-5">
+          {previewDays.map((day, index) => (
+            <div key={day} className="min-h-32 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <p className="text-xs font-black text-slate-500">{day}</p>
+              <div className="mt-3 rounded-lg bg-white p-3 shadow-sm">
+                <p className="text-xs font-bold text-[#D6001C]">{index % 2 === 0 ? "社内予定" : "部門予定"}</p>
+                <p className="mt-1 text-sm font-bold text-slate-900">{index % 2 === 0 ? "朝会・共有" : "商談/面談枠"}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </PanelCard>
+    </PageFrame>
+  );
+}
+
+export function WorkflowPage() {
+  const routeSteps = ["申請", "Manager確認", "Admin承認", "Owner最終決裁", "履歴化"];
+
+  return (
+    <PageFrame title="Workflow" lead="申請、添付、複数承認、差し戻しを扱うワークフローの土台です。今後実装予定です。">
+      <PanelCard className="p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">今後実装予定</span>
+            <h3 className="mt-4 text-xl font-black text-slate-950">TeamOS Workflow Foundation</h3>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+              サイボウズのワークフロー置き換えを見据えて、申請フォーム、添付、複数承認、条件分岐、差し戻し履歴の土台を置きます。
+            </p>
+          </div>
+          <span className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-black text-slate-600">Phase 3</span>
+        </div>
+      </PanelCard>
+
+      <div className="grid gap-4 xl:grid-cols-3">
+        {workflowFoundationItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <PanelCard key={item.title} className="p-5">
+              <div className="grid size-10 place-items-center rounded-lg bg-red-50 text-[#D6001C]">
+                <Icon size={19} />
+              </div>
+              <h3 className="mt-4 font-black text-slate-950">{item.title}</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-500">{item.description}</p>
+            </PanelCard>
+          );
+        })}
+      </div>
+
+      <PanelCard className="p-5">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="font-black text-slate-950">承認ルートサンプル</h3>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500">設計イメージ</span>
+        </div>
+        <div className="mt-5 grid gap-3 md:grid-cols-5">
+          {routeSteps.map((step, index) => (
+            <div key={step} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+              <span className="grid size-8 place-items-center rounded-full bg-[#D6001C] text-xs font-black text-white">{index + 1}</span>
+              <p className="mt-3 text-sm font-black text-slate-900">{step}</p>
+              <p className="mt-2 text-xs leading-5 text-slate-500">{index === 3 ? "金額や内容で省略/必須を分岐" : "今後実装予定"}</p>
+            </div>
+          ))}
+        </div>
+      </PanelCard>
+    </PageFrame>
+  );
+}
+
 export function AiSuggestionsPage() {
   const suggestionTitles = ["メールからタスク候補", "返信案の承認待ち", "会議アジェンダ案"];
   const [processedSuggestions, setProcessedSuggestions] = useState<Record<string, "approved" | "held">>({});
@@ -3055,7 +3197,7 @@ export function AiSuggestionsPage() {
   };
 
   return (
-    <PageFrame title="AIによる提案" lead="Gmail、LINE、サイボウズ通知、AI要約、返信案、タスク候補をここに集約します。人間承認前の受け皿です。">
+    <PageFrame title="AIによる提案" lead="Gmail、LINE、Google Calendar、外部通知、AI要約、返信案、タスク候補をここに集約します。人間承認前の受け皿です。">
       <PanelCard className="p-4">
         <p className="text-sm font-bold text-slate-700">{actionMessage}</p>
       </PanelCard>
@@ -3299,8 +3441,8 @@ export function SettingsPage({
       label: "外部連携設定",
       icon: ClipboardList,
       status: "今後実装予定",
-      lead: "Gmail、LINE、サイボウズなど外部サービスとの接続を管理します。",
-      items: ["Gmail OAuth接続", "LINE公式アカウント連携", "サイボウズAPI連携", "連携エラー履歴"],
+      lead: "Gmail、LINE、Google Calendar、Driveなど外部サービスとの接続を管理します。",
+      items: ["Gmail OAuth接続", "LINE公式アカウント連携", "Google Calendar同期", "Google Drive添付連携"],
     },
     {
       key: "ai",

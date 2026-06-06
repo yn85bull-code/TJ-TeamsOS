@@ -13,8 +13,10 @@ import {
   ApprovalRequestEntry,
   ApprovalReviewerOption,
   ApprovalsPage,
+  CalendarPage,
   CreatedTaskEntry,
   CreatedIssueEntry,
+  WorkflowPage,
   IssuesPage,
   MyTodoPage,
   ReportsPage,
@@ -877,6 +879,10 @@ function ActivePage({
       return <TasksPage appRole={appRole} requesterName={requesterName} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} sendbackTasks={sendbackTasks} createdTasks={createdTasks} createdIssues={createdIssues} preferredView={preferredTaskView} approvalReviewerOptions={approvalReviewerOptions} finalApprover={finalApprover} onCreateApproval={onCreateApproval} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} onRestoreTask={onRestoreTask} />;
     case "my_todo":
       return <MyTodoPage myTodos={myTodos} teamsTodos={teamsTodos} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} appRole={appRole} onCreateMyTodo={onCreateMyTodo} onUpdateMyTodo={onUpdateMyTodo} onDeleteMyTodo={onDeleteMyTodo} onCreateTeamsTodo={onCreateTeamsTodo} onUpdateTeamsTodo={onUpdateTeamsTodo} onDeleteTeamsTodo={onDeleteTeamsTodo} />;
+    case "calendar":
+      return <CalendarPage />;
+    case "workflow":
+      return <WorkflowPage />;
     case "approvals":
       return <ApprovalsPage onNavigate={onNavigate} approvalRequests={approvalRequests} resolvedApprovalIds={resolvedApprovalIds} onResolveApproval={onResolveApproval} onReviewApproval={onReviewApproval} onSendBackTask={onSendBackTask} approvalHistory={approvalHistory} onRecordApproval={onRecordApproval} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} appRole={appRole} />;
     case "teams":

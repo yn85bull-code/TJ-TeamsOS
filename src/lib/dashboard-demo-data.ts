@@ -6,6 +6,7 @@ import {
   CircleAlert,
   ClipboardList,
   Flag,
+  GitBranch,
   Inbox,
   LayoutDashboard,
   ListTodo,
@@ -66,6 +67,8 @@ export const navItems: NavItem[] = [
   { key: "issues", label: "Project", icon: ClipboardList },
   { key: "tasks", label: "Task", icon: CheckCircle2 },
   { key: "my_todo", label: "MyToDo", icon: ListTodo },
+  { key: "calendar", label: "Calendar", icon: CalendarDays },
+  { key: "workflow", label: "Workflow", icon: GitBranch },
   { key: "approvals", label: "Approvals", icon: ShieldCheck, badge: 5 },
   { key: "teams", label: "Organization", icon: Users },
   { key: "tauros_ai", label: "TaurosAI", icon: Bot },
@@ -225,7 +228,7 @@ export const recentActivities = [
 export const aiRoadmap = [
   { label: "Gmail連携", icon: Mail },
   { label: "LINE連携", icon: MessageCircle },
-  { label: "サイボウズ連携", icon: Inbox },
+  { label: "Google連携", icon: Inbox },
   { label: "AI要約・分類", icon: Sparkles },
   { label: "タスク候補化", icon: CheckCircle2 },
   { label: "人間承認", icon: Users },
@@ -238,7 +241,7 @@ export const pageDemo = {
   inbox: [
     { source: "Gmail", title: "見積回答の確認依頼", summary: "先方が本日中の回答を希望。AIが返信案を作成済み。", status: "要確認" },
     { source: "LINE", title: "現場到着遅延の連絡", summary: "担当者より15分遅延。顧客共有の候補あり。", status: "返信案" },
-    { source: "サイボウズ", title: "経費精算の承認通知", summary: "交通費精算 12,840円。規定内の候補です。", status: "承認待ち" },
+    { source: "Google通知", title: "経費精算の承認通知", summary: "交通費精算 12,840円。規定内の候補です。", status: "承認待ち" },
   ],
   issues: [
     { id: "ISS-001", title: "MVV共有と判断基準の統一", department: "ALL", owner: "未設定", priority: "Should", status: "未着手", due: "06/30", createdAt: "2026/06/03 09:00" },

@@ -13,10 +13,12 @@ const descriptions: Record<string, string> = {
   issues: "Projectを親として登録し、Task化と承認申請まで管理します。",
   tasks: "既存の通常タスクをTaskとして管理し、進捗と承認申請の状態を確認します。",
   my_todo: "MyToDoとTeamToDoを分けて管理します。どちらも承認フロー対象外です。",
+  calendar: "TeamOSを基幹にした社内予定管理の土台です。Google Calendar連携は今後実装予定です。",
+  workflow: "申請、添付、複数承認、差し戻しを扱うワークフローの土台です。今後実装予定です。",
   approvals: "承認待ちの申請を確認し、コメント付きで承認・差し戻しします。",
   teams: "所属、役職、権限、ユーザー情報をOrganizationとして確認します。",
   tauros_ai: "社内ナレッジ、業務ルール、マニュアル、FAQをAIに質問できる社内AIアシスタントです。",
-  ai: "Gmail、LINE、サイボウズ、AI提案候補を人間承認前に確認します。",
+  ai: "Gmail、LINE、Google Calendar、外部通知のAI提案候補を人間承認前に確認します。",
   reports: "将来の出力用レポート領域です。現状はダッシュボード集計を優先します。",
   logs: "誰が、いつ、何を変更したかを監査ログとして確認します。",
   settings: "通知、権限、外部連携、AI連携、承認ルールを管理します。",
@@ -27,6 +29,8 @@ const navLabels: Record<string, string> = {
   issues: "Project",
   tasks: "Task",
   my_todo: "MyToDo",
+  calendar: "Calendar",
+  workflow: "Workflow",
   approvals: "Approvals",
   teams: "Organization",
   tauros_ai: "TaurosAI",
@@ -39,10 +43,12 @@ const navLabels: Record<string, string> = {
 const searchIndex = [
   { title: "期限超過Task", subtitle: "Taskで期限超過を確認", target: "tasks" },
   { title: "MyToDo", subtitle: "MyToDoとTeamToDoを管理", target: "my_todo" },
+  { title: "Calendar", subtitle: "TeamOS基幹の予定管理とGoogle Calendar連携構想", target: "calendar" },
+  { title: "Workflow", subtitle: "申請、添付、複数承認、差し戻しの土台", target: "workflow" },
   { title: "承認待ち申請", subtitle: "承認ページで最終確認", target: "approvals" },
   { title: "TaurosAI", subtitle: "社内ナレッジ、業務ルール、マニュアル、FAQを質問", target: "tauros_ai" },
   { title: "ナレッジ管理", subtitle: "マニュアル、FAQ、業務ルールの登録", target: "tauros_ai" },
-  { title: "AI提案候補", subtitle: "Gmail / LINE / サイボウズ連携候補", target: "ai" },
+  { title: "AI提案候補", subtitle: "Gmail / LINE / Google Calendar / 外部通知の候補", target: "ai" },
   { title: "Project一覧", subtitle: "ProjectからTask化・承認申請へ進める", target: "issues" },
   { title: "Organization", subtitle: "所属・役職・権限・プロフィールを確認", target: "teams" },
   { title: "権限設定", subtitle: "権限ランクとメンバー権限を管理", target: "settings" },
@@ -289,7 +295,7 @@ export function TopHeader({
                 <div className="mt-3 grid gap-3 text-sm">
                   <HelpItem title="最終承認は人間が行う" body="AI提案や返信案は下書きとして保持し、承認前に自動登録・送信しません。" />
                   <HelpItem title="権限はログインユーザー単位" body="Supabase AuthのユーザーIDに部門・役職・権限ランクを紐づける想定です。" />
-                  <HelpItem title="外部連携は段階実装" body="Gmail、LINE、サイボウズはOAuth/API接続後、設定画面でON/OFF管理します。" />
+                  <HelpItem title="外部連携は段階実装" body="Gmail、LINE、Google Calendar、DriveはOAuth/API接続後、設定画面でON/OFF管理します。" />
                 </div>
                 <button className="mt-4 h-9 rounded-lg border border-slate-200 px-3 text-sm font-bold text-slate-700" type="button" onClick={() => navigate("settings")}>設定を見る</button>
               </HeaderPanel>
