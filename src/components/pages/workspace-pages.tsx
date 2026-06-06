@@ -2251,6 +2251,8 @@ function PermissionBadge({ rank }: { rank: string }) {
         ? "bg-indigo-50 text-indigo-700 ring-indigo-200"
         : rank === "Manager"
           ? "bg-orange-50 text-orange-700 ring-orange-200"
+          : rank === "Leader"
+            ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
           : rank === "Member"
             ? "bg-blue-50 text-blue-700 ring-blue-200"
             : "bg-slate-100 text-slate-700 ring-slate-200";
@@ -3330,6 +3332,7 @@ export function SettingsPage({
     { rank: "Owner", description: "全権限。会社・全データ・権限設定を管理し、最終承認を行えます。" },
     { rank: "Admin", description: "管理者。部門横断の設定、メンバー管理、運用メンテナンスができます。" },
     { rank: "Manager", description: "部門/チーム管理。担当部門やチームの課題・タスクを管理できます。" },
+    { rank: "Leader", description: "拠点・現場リード。所属内の軽いToDo共有や現場確認を担当できます。" },
     { rank: "Member", description: "作業担当。課題・タスクの登録と進捗更新ができます。" },
   ]);
   const [newRank, setNewRank] = useState("");
