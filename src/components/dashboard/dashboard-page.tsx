@@ -15,7 +15,9 @@ import {
   pageDemo,
   recentActivities,
 } from "@/lib/dashboard-demo-data";
+import { canAccessNavItem, normalizeAppRole } from "@/lib/domain/permissions";
 import { DEFAULT_DEPARTMENTS, normalizeDepartmentList } from "@/lib/workspace/department-store";
+import { AppRole } from "@/types/database";
 import {
   ArrowRight,
   Bot,
@@ -39,10 +41,25 @@ type DashboardPageProps = {
   createdTasks?: TaskSummary[];
   createdIssues?: Array<{ owner: string }>;
   departmentOptions?: string[];
+  appRole?: AppRole;
+  currentUserName?: string;
+  currentUserId?: string;
+  currentUserDepartment?: string;
 };
 
-export function DashboardPage({ onNavigate, createdTasks = [], createdIssues = [], departmentOptions = DEFAULT_DEPARTMENTS }: DashboardPageProps) {
+export function DashboardPage({ onNavigate, createdTasks = [], createdIssues = [], departmentOptions = DEFAULT_DEPARTMENTS, appRole = "member", currentUserName = "", currentUserId, currentUserDepartment }: DashboardPageProps) {
   const todayLabel = useMemo(() => formatTodayLabel(), []);
+  const normalizedRole = normalizeAppRole(appRole);
+  const canViewAll = normalizedRole === "owner" || normalizedRole === "admin";
+  const canViewTeamSummary = canViewAll;
+  const visibleCreatedTasks = useMemo(
+    () => filterDashboardTasks(createdTasks, currentUserName, currentUserId, currentUserDepartment, appRole),
+    [appRole, createdTasks, currentUserDepartment, currentUserId, currentUserName],
+  );
+  const visibleCreatedIssues = useMemo(
+    () => canViewAll ? createdIssues : createdIssues.filter((issue) => isSamePersonName(issue.owner, currentUserName)),
+    [canViewAll, createdIssues, currentUserName],
+  );
 
   return (
     <div className="grid gap-5">
@@ -54,19 +71,21 @@ export function DashboardPage({ onNavigate, createdTasks = [], createdIssues = [
         <span className="rounded-md bg-red-50 px-3 py-1 text-xs font-bold text-[#D6001C]">HOME</span>
       </section>
 
-      <KpiSummaryGrid onNavigate={onNavigate} createdTasks={createdTasks} createdIssues={createdIssues} />
+      <KpiSummaryGrid onNavigate={onNavigate} createdTasks={visibleCreatedTasks} createdIssues={visibleCreatedIssues} appRole={appRole} />
 
-      <section className="grid gap-5 xl:grid-cols-[1.05fr_1.35fr_0.75fr]">
-        <MyTasksPanel onNavigate={onNavigate} />
-        <TeamKanban onNavigate={onNavigate} />
-        <ImportantNotificationsPanel onNavigate={onNavigate} />
+      <section className={`grid gap-5 ${canViewTeamSummary ? "xl:grid-cols-[1.05fr_1.35fr_0.75fr]" : "xl:grid-cols-[1fr_0.85fr]"}`}>
+        <MyTasksPanel onNavigate={onNavigate} createdTasks={visibleCreatedTasks} currentUserName={currentUserName} appRole={appRole} />
+        {canViewTeamSummary ? <TeamKanban onNavigate={onNavigate} /> : null}
+        <ImportantNotificationsPanel onNavigate={onNavigate} appRole={appRole} />
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-3">
-        <DueDateDonutCard />
-        <DepartmentProgressCard onNavigate={onNavigate} createdTasks={createdTasks} departmentOptions={departmentOptions} />
-        <RecentActivityCard onNavigate={onNavigate} />
-      </section>
+      {canViewTeamSummary ? (
+        <section className="grid gap-5 xl:grid-cols-3">
+          <DueDateDonutCard />
+          <DepartmentProgressCard onNavigate={onNavigate} createdTasks={visibleCreatedTasks} departmentOptions={departmentOptions} />
+          <RecentActivityCard onNavigate={onNavigate} />
+        </section>
+      ) : null}
 
       <AiRoadmapCard />
       {designMode ? <DesignSpecPanel /> : null}
@@ -83,8 +102,53 @@ function formatTodayLabel() {
   }).format(new Date());
 }
 
-export function KpiSummaryGrid({ onNavigate, createdTasks = [], createdIssues = [] }: DashboardPageProps) {
-  const dashboardKpis = useMemo(() => buildDashboardKpis(createdTasks ?? [], createdIssues ?? []), [createdTasks, createdIssues]);
+type DashboardTaskScopeEntry = TaskSummary & {
+  createdById?: string;
+  createdByName?: string;
+  responsiblePerson?: string;
+  assigneePerson?: string;
+};
+
+function filterDashboardTasks(tasks: TaskSummary[], currentUserName: string, currentUserId: string | undefined, currentUserDepartment: string | undefined, appRole: AppRole) {
+  const normalizedRole = normalizeAppRole(appRole);
+  if (normalizedRole === "owner" || normalizedRole === "admin") return tasks;
+
+  return tasks.filter((task) => {
+    const scopedTask = task as DashboardTaskScopeEntry;
+    if (isDashboardTaskRelated(scopedTask, currentUserName, currentUserId)) return true;
+    return normalizedRole === "department_manager" && isSameDepartmentLabel(scopedTask.projectName, currentUserDepartment);
+  });
+}
+
+function isDashboardTaskRelated(task: DashboardTaskScopeEntry, currentUserName: string, currentUserId?: string) {
+  if (task.createdById && currentUserId && task.createdById === currentUserId) return true;
+  return [task.createdByName, task.assigneeName, task.responsiblePerson, task.assigneePerson].some((name) => isSamePersonName(name, currentUserName));
+}
+
+function getNotificationTarget(item: NotificationSummary) {
+  return item.type === "approval" ? "approvals" : item.type === "ai" ? "ai" : item.type === "task" ? "tasks" : "logs";
+}
+
+function isSamePersonName(left: string | undefined, right: string | undefined) {
+  const normalizedLeft = normalizePersonName(left);
+  const normalizedRight = normalizePersonName(right);
+  return Boolean(normalizedLeft && normalizedRight && (normalizedLeft === normalizedRight || normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)));
+}
+
+function normalizePersonName(value: string | undefined) {
+  return (value ?? "").toLowerCase().replace(/\s+/g, "");
+}
+
+function isSameDepartmentLabel(left: string | undefined, right: string | undefined) {
+  const normalizedLeft = normalizeDepartmentName(left ?? "");
+  const normalizedRight = normalizeDepartmentName(right ?? "");
+  return Boolean(normalizedLeft && normalizedRight && (normalizedLeft === normalizedRight || normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)));
+}
+
+export function KpiSummaryGrid({ onNavigate, createdTasks = [], createdIssues = [], appRole = "member" }: DashboardPageProps) {
+  const normalizedRole = normalizeAppRole(appRole);
+  const includeDemoTotals = normalizedRole === "owner" || normalizedRole === "admin";
+  const dashboardKpis = useMemo(() => buildDashboardKpis(createdTasks ?? [], createdIssues ?? [], includeDemoTotals), [createdTasks, createdIssues, includeDemoTotals]);
   const kpiTargets: Record<string, string> = {
     今日締切: "tasks",
     期限超過: "tasks",
@@ -98,25 +162,27 @@ export function KpiSummaryGrid({ onNavigate, createdTasks = [], createdIssues = 
     <section>
       <p className="mb-2 text-xs font-bold text-slate-500">KPIはタスク・承認・通知のデモデータから自動集計</p>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        {dashboardKpis.map((kpi) => (
-          <KpiCard key={kpi.label} kpi={kpi} onClick={() => onNavigate(kpiTargets[kpi.label] ?? "dashboard")} />
-        ))}
+        {dashboardKpis
+          .filter((kpi) => canAccessNavItem(appRole, kpiTargets[kpi.label] ?? "dashboard"))
+          .map((kpi) => (
+            <KpiCard key={kpi.label} kpi={kpi} onClick={() => onNavigate(kpiTargets[kpi.label] ?? "dashboard")} />
+          ))}
       </div>
     </section>
   );
 }
 
-function buildDashboardKpis(createdTasks: TaskSummary[] = [], createdIssues: Array<{ owner: string }> = []): DashboardKpi[] {
+function buildDashboardKpis(createdTasks: TaskSummary[] = [], createdIssues: Array<{ owner: string }> = [], includeDemoTotals = true): DashboardKpi[] {
   const openCreatedTasks = createdTasks.filter((task) => task.status !== "done" && task.progress < 100);
-  const shownTasks = [...myTasks, ...openCreatedTasks, ...kanbanColumns.flatMap((column) => column.tasks)];
-  const hiddenKanbanTaskCount = kanbanColumns.reduce((sum, column) => sum + column.more, 0);
-  const totalKanbanTaskCount = kanbanColumns.reduce((sum, column) => sum + column.count, 0);
-  const todayDue = (dueDateChartData[0]?.value ?? 0) + openCreatedTasks.filter((task) => task.dueDate === "05/31").length;
+  const shownTasks = includeDemoTotals ? [...myTasks, ...openCreatedTasks, ...kanbanColumns.flatMap((column) => column.tasks)] : openCreatedTasks;
+  const hiddenKanbanTaskCount = includeDemoTotals ? kanbanColumns.reduce((sum, column) => sum + column.more, 0) : 0;
+  const totalKanbanTaskCount = includeDemoTotals ? kanbanColumns.reduce((sum, column) => sum + column.count, 0) : Math.max(openCreatedTasks.length, 1);
+  const todayDue = (includeDemoTotals ? (dueDateChartData[0]?.value ?? 0) : 0) + openCreatedTasks.filter((task) => task.dueDate === "05/31").length;
   const overdue = shownTasks.filter((task) => task.status !== "done" && task.dueDate <= "05/31").length;
-  const approvalWaiting = kanbanColumns.find((column) => column.id === "approval_pending")?.count ?? 0;
+  const approvalWaiting = includeDemoTotals ? kanbanColumns.find((column) => column.id === "approval_pending")?.count ?? 0 : openCreatedTasks.filter((task) => task.status === "approval_pending").length;
   const mustPriority = shownTasks.filter((task) => task.priority === "must").length + Math.round(hiddenKanbanTaskCount / 7);
-  const unassignedIssues = pageDemo.issues.filter((issue, index) => index === 0 || issue.owner.includes("未")).length + createdIssues.filter((issue) => issue.owner.includes("未")).length;
-  const aiCandidates = notifications.filter((item) => item.type === "ai").length + pageDemo.inbox.length + 1;
+  const unassignedIssues = (includeDemoTotals ? pageDemo.issues.filter((issue, index) => index === 0 || issue.owner.includes("未")).length : 0) + createdIssues.filter((issue) => issue.owner.includes("未")).length;
+  const aiCandidates = includeDemoTotals ? notifications.filter((item) => item.type === "ai").length + pageDemo.inbox.length + 1 : notifications.filter((item) => item.type === "ai").length;
 
   return [
     { label: "今日締切", value: todayDue, suffix: "件", diffLabel: "締切データから集計", color: "red", icon: CalendarDays, progress: Math.min(todayDue * 8, 100) },
@@ -151,14 +217,18 @@ export function KpiCard({ kpi, onClick }: { kpi: DashboardKpi; onClick: () => vo
   );
 }
 
-export function MyTasksPanel({ onNavigate }: DashboardPageProps) {
+export function MyTasksPanel({ onNavigate, createdTasks = [], currentUserName = "", appRole = "member" }: DashboardPageProps) {
   const [activeFilter, setActiveFilter] = useState<"today" | "week" | "overdue">("today");
+  const normalizedRole = normalizeAppRole(appRole);
+  const canViewDemoTasks = normalizedRole === "owner" || normalizedRole === "admin";
+  const relatedDemoTasks = canViewDemoTasks ? myTasks : myTasks.filter((task) => isSamePersonName(task.assigneeName, currentUserName));
+  const relatedTasks = [...relatedDemoTasks, ...createdTasks];
   const taskFilters: Array<{ key: "today" | "week" | "overdue"; label: string; tasks: TaskSummary[] }> = [
-    { key: "today", label: "今日", tasks: myTasks.filter((task) => task.dueDate === "05/31") },
-    { key: "week", label: "今週", tasks: myTasks },
-    { key: "overdue", label: "期限超過", tasks: myTasks.filter((task) => task.status !== "done" && task.dueDate <= "05/31") },
+    { key: "today", label: "今日", tasks: relatedTasks.filter((task) => task.dueDate === "05/31") },
+    { key: "week", label: "今週", tasks: relatedTasks },
+    { key: "overdue", label: "期限超過", tasks: relatedTasks.filter((task) => task.status !== "done" && task.dueDate <= "05/31") },
   ];
-  const activeTasks = taskFilters.find((filter) => filter.key === activeFilter)?.tasks ?? myTasks;
+  const activeTasks = taskFilters.find((filter) => filter.key === activeFilter)?.tasks ?? relatedTasks;
 
   return (
     <PanelCard className="p-5">
@@ -293,12 +363,13 @@ export function TaskCard({ task }: { task: TaskSummary }) {
   );
 }
 
-export function ImportantNotificationsPanel({ onNavigate }: DashboardPageProps) {
+export function ImportantNotificationsPanel({ onNavigate, appRole = "member" }: DashboardPageProps) {
+  const visibleNotifications = notifications.filter((item) => canAccessNavItem(appRole, getNotificationTarget(item)));
   const groups = [
-    { title: "承認待ち", count: notifications.filter((item) => item.type === "approval").length, items: notifications.filter((item) => item.type === "approval") },
-    { title: "AI提案候補", count: notifications.filter((item) => item.type === "ai").length, items: notifications.filter((item) => item.type === "ai") },
-    { title: "重要な通知", count: notifications.filter((item) => item.type === "comment" || item.type === "task").length, items: notifications.filter((item) => item.type === "comment" || item.type === "task") },
-  ];
+    { title: "承認待ち", count: visibleNotifications.filter((item) => item.type === "approval").length, items: visibleNotifications.filter((item) => item.type === "approval") },
+    { title: "AI提案候補", count: visibleNotifications.filter((item) => item.type === "ai").length, items: visibleNotifications.filter((item) => item.type === "ai") },
+    { title: "重要な通知", count: visibleNotifications.filter((item) => item.type === "comment" || item.type === "task").length, items: visibleNotifications.filter((item) => item.type === "comment" || item.type === "task") },
+  ].filter((group) => group.items.length > 0);
 
   return (
     <PanelCard className="p-5">
@@ -322,13 +393,14 @@ export function ImportantNotificationsPanel({ onNavigate }: DashboardPageProps) 
             </div>
           </section>
         ))}
+        {groups.length === 0 ? <p className="rounded-lg bg-slate-50 p-4 text-sm font-semibold text-slate-500">表示できる通知はありません。</p> : null}
       </div>
     </PanelCard>
   );
 }
 
 export function NotificationItem({ item, onNavigate }: { item: NotificationSummary; onNavigate: (key: string) => void }) {
-  const target = item.type === "approval" ? "approvals" : item.type === "ai" ? "ai" : item.type === "task" ? "tasks" : "logs";
+  const target = getNotificationTarget(item);
   return (
     <button className="flex gap-3 rounded-lg p-2 text-left transition hover:bg-slate-50" type="button" onClick={() => onNavigate(target)}>
       <CircleDot className={item.unread ? "mt-1 text-[#D6001C]" : "mt-1 text-slate-300"} size={13} />

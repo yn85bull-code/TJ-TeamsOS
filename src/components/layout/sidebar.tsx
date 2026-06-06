@@ -1,13 +1,19 @@
 import { navItems } from "@/lib/dashboard-demo-data";
+import { canAccessNavItem } from "@/lib/domain/permissions";
+import { AppRole } from "@/types/database";
 import { ChevronRight } from "lucide-react";
 
 export function Sidebar({
   activeKey,
+  appRole = "member",
   onSelect,
 }: {
   activeKey: string;
+  appRole?: AppRole;
   onSelect: (key: string) => void;
 }) {
+  const visibleNavItems = navItems.filter((item) => canAccessNavItem(appRole, item.key));
+
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-[240px] flex-col bg-[#080F14] px-4 py-5 text-white lg:flex">
       <div className="flex items-center gap-3 px-2">
@@ -19,7 +25,7 @@ export function Sidebar({
       </div>
 
       <nav className="mt-8 grid gap-1.5">
-        {navItems.map((item) => {
+        {visibleNavItems.map((item) => {
           const Icon = item.icon;
           const active = item.key === activeKey;
           return (

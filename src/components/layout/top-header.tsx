@@ -3,11 +3,13 @@
 import { Bell, CheckCircle2, ChevronDown, CircleHelp, LogOut, Plus, Search, Settings, ShieldCheck, UserRound } from "lucide-react";
 import { navItems } from "@/lib/dashboard-demo-data";
 import { AuthUser } from "@/lib/auth-demo-data";
+import { canAccessNavItem } from "@/lib/domain/permissions";
 import type { AppNotificationEntry } from "@/lib/workspace/notification-store";
+import { AppRole } from "@/types/database";
 import { useMemo, useState } from "react";
 
 const descriptions: Record<string, string> = {
-  dashboard: "チーム全体の状況、期限、承認、AI提案をリアルタイムに確認します。",
+  dashboard: "権限に応じて、期限、承認、AI提案、担当タスクの状況を確認します。",
   issues: "課題を親として登録し、タスク化と承認申請まで管理します。",
   tasks: "担当タスクの進捗、ToDoメモ、承認申請の状態を確認します。",
   approvals: "承認待ちの申請を確認し、コメント付きで承認・差し戻しします。",
@@ -51,6 +53,7 @@ export function TopHeader({
   title,
   activeKey,
   user,
+  appRole = "member",
   canCreate,
   onSelect,
   onCreate,
@@ -62,6 +65,7 @@ export function TopHeader({
   title: string;
   activeKey: string;
   user: AuthUser;
+  appRole?: AppRole;
   canCreate: boolean;
   onSelect: (key: string) => void;
   onCreate: () => void;
@@ -74,14 +78,15 @@ export function TopHeader({
   const [searchFocused, setSearchFocused] = useState(false);
   const [openPanel, setOpenPanel] = useState<"notifications" | "help" | "account" | null>(null);
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>([]);
-  const notificationItems = notifications ?? demoHeaderNotifications;
+  const notificationItems = (notifications ?? demoHeaderNotifications).filter((item) => canAccessNavItem(appRole, item.target));
   const unreadCount = notificationItems.filter((item) => !isNotificationRead(item, readNotificationIds)).length;
   const displayTitle = navLabels[activeKey] ?? title;
   const searchResults = useMemo(() => {
     const keyword = query.trim().toLowerCase();
-    if (!keyword) return searchIndex.slice(0, 4);
-    return searchIndex.filter((item) => `${item.title} ${item.subtitle}`.toLowerCase().includes(keyword));
-  }, [query]);
+    const visibleSearchIndex = searchIndex.filter((item) => canAccessNavItem(appRole, item.target));
+    if (!keyword) return visibleSearchIndex.slice(0, 4);
+    return visibleSearchIndex.filter((item) => `${item.title} ${item.subtitle}`.toLowerCase().includes(keyword));
+  }, [appRole, query]);
 
   const selectPanel = (panel: "notifications" | "help" | "account") => {
     setOpenPanel((current) => (current === panel ? null : panel));
@@ -97,7 +102,7 @@ export function TopHeader({
   const markNotificationRead = (notification: AppNotificationEntry) => {
     setReadNotificationIds((ids) => [...new Set([...ids, notification.id])]);
     onMarkNotificationRead?.(notification);
-    navigate(notification.target);
+    navigate(canAccessNavItem(appRole, notification.target) ? notification.target : "dashboard");
   };
 
   const markAllNotificationsRead = () => {

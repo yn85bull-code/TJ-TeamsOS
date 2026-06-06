@@ -13,8 +13,9 @@ const roleRank: Record<AppRole, number> = {
   viewer: 10,
 };
 
-const approvalRoles: AppRole[] = ["owner"];
+const approvalRoles: AppRole[] = ["owner", "admin"];
 const managementRoles: AppRole[] = ["owner", "admin"];
+const deleteRoles: AppRole[] = ["owner"];
 
 export function normalizeAppRole(role: AppRole): AppRole {
   if (role === "executive" || role === "team_manager") return "department_manager";
@@ -28,9 +29,21 @@ export function can(role: AppRole, resource: PermissionResource, action: Permiss
   if (action === "read") return roleRank[normalizedRole] >= roleRank.member;
   if (action === "approve") return resource === "approvals" && approvalRoles.includes(normalizedRole);
   if (action === "manage") return managementRoles.includes(normalizedRole);
-  if (action === "delete") return managementRoles.includes(normalizedRole);
+  if (action === "delete") return deleteRoles.includes(normalizedRole);
   if (resource === "settings" || resource === "teams") return managementRoles.includes(normalizedRole);
   return roleRank[normalizedRole] >= roleRank.member;
+}
+
+export function canAccessNavItem(role: AppRole, key: string) {
+  const normalizedRole = normalizeAppRole(role);
+
+  if (normalizedRole === "owner" || normalizedRole === "admin") return true;
+
+  if (normalizedRole === "department_manager") {
+    return ["dashboard", "issues", "tasks", "approvals", "teams", "ai"].includes(key);
+  }
+
+  return ["dashboard", "issues", "tasks", "ai"].includes(key);
 }
 
 export function mapDemoRoleToAppRole(role: string): AppRole {

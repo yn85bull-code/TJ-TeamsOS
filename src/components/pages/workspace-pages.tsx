@@ -22,6 +22,7 @@ type NavigateHandler = {
   createdIssues?: CreatedIssueEntry[];
   currentUserName?: string;
   currentUserId?: string;
+  currentUserDepartment?: string;
   appRole?: AppRole;
   departmentOptions?: string[];
 };
@@ -184,7 +185,7 @@ type ApprovalsPageProps = NavigateHandler & {
   onRecordApproval?: (entry: ApprovalHistoryEntry) => void;
 };
 
-export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, onDeleteIssue, onRestoreIssue, createdIssues = [], currentUserName = "山田 太郎", currentUserId, appRole = "member", departmentOptions = DEFAULT_DEPARTMENTS }: NavigateHandler) {
+export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, onDeleteIssue, onRestoreIssue, createdIssues = [], currentUserName = "山田 太郎", currentUserId, currentUserDepartment, appRole = "member", departmentOptions = DEFAULT_DEPARTMENTS }: NavigateHandler) {
   const [actionMessage, setActionMessage] = useState("課題を選んで、詳細確認・タスク化・削除を行えます。");
   const [deletedIssueIds, setDeletedIssueIds] = useState<string[]>([]);
   const [detailIssueId, setDetailIssueId] = useState<string | null>(null);
@@ -200,7 +201,7 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
   const allIssues = useMemo(() => [...activeCreatedIssues, ...pageDemo.issues], [activeCreatedIssues]);
   const visibleIssues = allIssues
     .filter((issue) => !deletedIssueIds.includes(issue.id))
-    .filter((issue) => canViewIssueForUser(issue, currentUserName, currentUserId, appRole));
+    .filter((issue) => canViewIssueForUser(issue, currentUserName, currentUserId, currentUserDepartment, appRole));
   const detailIssue = detailIssueId ? allIssues.find((issue) => issue.id === detailIssueId) : undefined;
   const editIssue = editIssueId ? createdIssues.find((issue) => issue.id === editIssueId) : undefined;
   const taskizeIssue = taskizeIssueId ? allIssues.find((issue) => issue.id === taskizeIssueId) : undefined;
@@ -723,22 +724,30 @@ function canEditCreatedIssue(issue: CreatedIssueEntry, currentUserName: string, 
 }
 
 function canEditCreatedTask(task: CreatedTaskEntry, currentUserName: string, appRole: AppRole, currentUserId?: string) {
-  return canEditCreatedRecord(task, currentUserName, appRole, "tasks", currentUserId);
+  if (!can(appRole, "tasks", "update")) return false;
+  if (canViewAllWork(appRole)) return true;
+  return isTaskRelatedToCurrentUser(task, currentUserName, currentUserId);
 }
 
 function canViewAllWork(appRole: AppRole) {
-  return can(appRole, "tasks", "manage") || normalizeOperationalRole(appRole) === "department_manager";
+  return can(appRole, "tasks", "manage");
 }
 
-function canViewIssueForUser(issue: IssueListEntry, currentUserName: string, currentUserId: string | undefined, appRole: AppRole) {
+function canViewDepartmentWork(appRole: AppRole) {
+  return normalizeOperationalRole(appRole) === "department_manager";
+}
+
+function canViewIssueForUser(issue: IssueListEntry, currentUserName: string, currentUserId: string | undefined, currentUserDepartment: string | undefined, appRole: AppRole) {
   if (canViewAllWork(appRole)) return true;
+  if (canViewDepartmentWork(appRole) && isSameDepartmentLabel(issue.department, currentUserDepartment)) return true;
   if ("createdById" in issue && issue.createdById && currentUserId && issue.createdById === currentUserId) return true;
   if ("createdByName" in issue && isSamePersonName(issue.createdByName, currentUserName)) return true;
   return isSamePersonName(issue.owner, currentUserName);
 }
 
-function isTaskVisibleForUser(task: TaskSummary | CreatedTaskEntry | SendbackTaskEntry, currentUserName: string, currentUserId: string | undefined, appRole: AppRole) {
+function isTaskVisibleForUser(task: TaskSummary | CreatedTaskEntry | SendbackTaskEntry, currentUserName: string, currentUserId: string | undefined, currentUserDepartment: string | undefined, appRole: AppRole) {
   if (canViewAllWork(appRole)) return true;
+  if (canViewDepartmentWork(appRole) && isSameDepartmentLabel(task.projectName, currentUserDepartment)) return true;
   return isTaskRelatedToCurrentUser(task, currentUserName, currentUserId);
 }
 
@@ -750,11 +759,11 @@ function isTaskRelatedToCurrentUser(task: TaskSummary | CreatedTaskEntry | Sendb
 
 function canWorkOnTask(task: TaskSummary | CreatedTaskEntry | SendbackTaskEntry, currentUserName: string, _currentUserId: string | undefined, appRole: AppRole) {
   if (canViewAllWork(appRole)) return true;
-  return isTaskAssigneeOrResponsible(task, currentUserName);
+  return isTaskRelatedToCurrentUser(task, currentUserName, _currentUserId);
 }
 
-function canRequestApprovalForTask(task: TaskSummary | CreatedTaskEntry | SendbackTaskEntry, currentUserName: string, _currentUserId?: string) {
-  return isTaskAssigneeOrResponsible(task, currentUserName);
+function canRequestApprovalForTask(task: TaskSummary | CreatedTaskEntry | SendbackTaskEntry, currentUserName: string, currentUserId?: string) {
+  return isTaskRelatedToCurrentUser(task, currentUserName, currentUserId);
 }
 
 function isTaskAssigneeOrResponsible(task: TaskSummary | CreatedTaskEntry | SendbackTaskEntry, currentUserName: string) {
@@ -765,7 +774,7 @@ function isTaskAssigneeOrResponsible(task: TaskSummary | CreatedTaskEntry | Send
 
 function getApprovalRequestDisabledReason(task: TaskSummary | CreatedTaskEntry | SendbackTaskEntry, progress: number, currentUserName: string, currentUserId?: string) {
   if (progress < 100) return "進捗100%で承認申請できます";
-  if (!canRequestApprovalForTask(task, currentUserName, currentUserId)) return "承認申請は担当責任者または担当者のみ送信できます";
+  if (!canRequestApprovalForTask(task, currentUserName, currentUserId)) return "承認申請は登録者または担当者のみ送信できます";
   return undefined;
 }
 
@@ -806,6 +815,16 @@ function isSamePersonName(left: string | undefined, right: string | undefined) {
 
 function normalizePersonName(value: string | undefined) {
   return (value ?? "").toLowerCase().replace(/\s+/g, "");
+}
+
+function isSameDepartmentLabel(left: string | undefined, right: string | undefined) {
+  const normalizedLeft = normalizeDepartmentLabel(left);
+  const normalizedRight = normalizeDepartmentLabel(right);
+  return Boolean(normalizedLeft && normalizedRight && (normalizedLeft === normalizedRight || normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)));
+}
+
+function normalizeDepartmentLabel(value: string | undefined) {
+  return (value ?? "").toLowerCase().replace(/\s+/g, "").replace(/部門$/, "").replace(/本部$/, "部");
 }
 
 function getIssueCategory1(issue: IssueListEntry) {
@@ -882,6 +901,7 @@ export function TasksPage({
   requesterName = "山田 太郎",
   currentUserName = requesterName,
   currentUserId,
+  currentUserDepartment,
   sendbackTasks = [],
   createdTasks = [],
   preferredView,
@@ -896,6 +916,7 @@ export function TasksPage({
   requesterName?: string;
   currentUserName?: string;
   currentUserId?: string;
+  currentUserDepartment?: string;
   sendbackTasks?: SendbackTaskEntry[];
   createdTasks?: CreatedTaskEntry[];
   preferredView?: "mine" | "team" | "approval" | "sendback";
@@ -911,12 +932,12 @@ export function TasksPage({
   const allSendbackTasks = useMemo(() => [...sendbackTasks, ...sendbackTaskSummaries], [sendbackTasks]);
   const canViewTeamWork = canViewAllWork(appRole);
   const allTaskSummaries = useMemo(() => {
-    const baseMyTasks = canViewTeamWork ? myTasks : myTasks.filter((task) => isTaskVisibleForUser(task, currentUserName, currentUserId, appRole));
-    const baseTeamTasks = canViewTeamWork ? teamTaskSummaries : teamTaskSummaries.filter((task) => isTaskVisibleForUser(task, currentUserName, currentUserId, appRole));
-    const visibleCreatedTasks = canViewTeamWork ? activeCreatedTasks : activeCreatedTasks.filter((task) => isTaskVisibleForUser(task, currentUserName, currentUserId, appRole));
-    const visibleSendbackTasks = canViewTeamWork ? allSendbackTasks : allSendbackTasks.filter((task) => isTaskVisibleForUser(task, currentUserName, currentUserId, appRole));
+    const baseMyTasks = canViewTeamWork ? myTasks : myTasks.filter((task) => isTaskVisibleForUser(task, currentUserName, currentUserId, currentUserDepartment, appRole));
+    const baseTeamTasks = canViewTeamWork ? teamTaskSummaries : teamTaskSummaries.filter((task) => isTaskVisibleForUser(task, currentUserName, currentUserId, currentUserDepartment, appRole));
+    const visibleCreatedTasks = canViewTeamWork ? activeCreatedTasks : activeCreatedTasks.filter((task) => isTaskVisibleForUser(task, currentUserName, currentUserId, currentUserDepartment, appRole));
+    const visibleSendbackTasks = canViewTeamWork ? allSendbackTasks : allSendbackTasks.filter((task) => isTaskVisibleForUser(task, currentUserName, currentUserId, currentUserDepartment, appRole));
     return [...baseMyTasks, ...visibleCreatedTasks, ...baseTeamTasks, ...visibleSendbackTasks];
-  }, [activeCreatedTasks, allSendbackTasks, appRole, canViewTeamWork, currentUserId, currentUserName]);
+  }, [activeCreatedTasks, allSendbackTasks, appRole, canViewTeamWork, currentUserDepartment, currentUserId, currentUserName]);
   const myTaskSummaries = useMemo(
     () => allTaskSummaries.filter((task) => isTaskRelatedToCurrentUser(task, currentUserName, currentUserId)),
     [allTaskSummaries, currentUserId, currentUserName],
@@ -992,7 +1013,7 @@ export function TasksPage({
     if (!task) return;
 
     if (mode === "progress" && !canWorkOnTask(task, currentUserName, currentUserId, appRole)) {
-      setSaveMessage("進捗報告は担当責任者・担当者、または管理権限のあるユーザーのみ実行できます。");
+      setSaveMessage("進捗報告は登録者・担当者、または管理権限のあるユーザーのみ実行できます。");
       return;
     }
 
@@ -1003,7 +1024,7 @@ export function TasksPage({
         return;
       }
       if (!canRequestApprovalForTask(task, currentUserName, currentUserId)) {
-        setSaveMessage("承認申請は担当責任者または担当者のみ送信できます。");
+        setSaveMessage("承認申請は登録者または担当者のみ送信できます。");
         return;
       }
     }
@@ -1070,7 +1091,7 @@ export function TasksPage({
     const isResubmission = taskView === "sendback" || Boolean(sendbackTaskDetails[taskId]);
     const currentRecordBeforeRequest = task ? getTaskRecord(taskRecords, task) : taskRecords[taskId];
     if (!task || !canRequestApprovalForTask(task, currentUserName, currentUserId)) {
-      setSaveMessage("承認申請は担当責任者または担当者のみ送信できます。");
+      setSaveMessage("承認申請は登録者または担当者のみ送信できます。");
       return;
     }
     if (!currentRecordBeforeRequest || currentRecordBeforeRequest.progress < 100) {
@@ -1311,7 +1332,7 @@ export function TasksPage({
                 <p className="mt-2 text-xs font-bold text-slate-500">承認申請は進捗100%になってから送信できます。</p>
               ) : null}
               {record.progress >= 100 && !canRequestApprovalForTask(task, currentUserName, currentUserId) ? (
-                <p className="mt-2 text-xs font-bold text-slate-500">承認申請は担当責任者または担当者のみ送信できます。</p>
+                <p className="mt-2 text-xs font-bold text-slate-500">承認申請は登録者または担当者のみ送信できます。</p>
               ) : null}
             </PanelCard>
           );
@@ -1963,7 +1984,7 @@ export function ApprovalsPage({
 }
 
 function canFinalizeApproval(approval: ApprovalRequestEntry, currentUserId?: string, appRole: AppRole = "member") {
-  return canMakeFinalApprovalDecision(approval, currentUserId, appRole) && Boolean(approval.reviewedAt);
+  return canMakeFinalApprovalDecision(approval, currentUserId, appRole);
 }
 
 function canSendBackApproval(approval: ApprovalRequestEntry, currentUserId?: string, appRole: AppRole = "member") {
@@ -1977,7 +1998,9 @@ function canReviewApproval(approval: ApprovalRequestEntry, currentUserId?: strin
 }
 
 function canMakeFinalApprovalDecision(approval: ApprovalRequestEntry, currentUserId?: string, appRole: AppRole = "member") {
-  if (!currentUserId || appRole !== "owner") return false;
+  if (!currentUserId) return false;
+  if (appRole === "admin") return true;
+  if (appRole !== "owner") return false;
   return !approval.finalApproverId || approval.finalApproverId === currentUserId;
 }
 
@@ -2006,6 +2029,8 @@ function ApprovalCommentPanel({
 }) {
   const [comment, setComment] = useState("");
   const actionTitle = mode === "review" ? "確認" : mode === "approve" ? "承認" : "差し戻し";
+  const commentRequired = mode === "sendback";
+  const canSubmit = !commentRequired || Boolean(comment.trim());
   const placeholder = mode === "review"
     ? "確認した内容や補足コメントを入力"
     : mode === "approve"
@@ -2035,7 +2060,12 @@ function ApprovalCommentPanel({
       </label>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <button className="h-10 rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white" type="button" onClick={() => onSubmit(comment || "コメント未入力")}>
+        <button
+          className="h-10 rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+          type="button"
+          disabled={!canSubmit}
+          onClick={() => onSubmit(comment.trim() || "コメント未入力")}
+        >
           {getApprovalActionButtonLabel(mode)}
         </button>
         <button className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-bold text-slate-700" type="button" onClick={onCancel}>

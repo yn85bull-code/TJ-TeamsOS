@@ -56,6 +56,14 @@ supabase/align_profile_roles_20260606.sql
 
 このSQLは、Ownerを楢原悠太郎さんに固定し、Admin/Manager/Memberへ旧ロールを整理します。
 
+権限モデルを課題・タスク・承認フローへ反映する場合は、次のSQLも実行します。
+
+```text
+supabase/apply_permission_model_20260606.sql
+```
+
+このSQLは、Memberを自分関連データのみ、Managerを自部門・自拠点の閲覧と確認のみ、Owner / Adminを最終承認可能に揃えます。
+
 ## 5. ローカル確認
 
 環境変数を入れた後、サーバーを再起動します。

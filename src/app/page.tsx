@@ -25,7 +25,7 @@ import {
 } from "@/components/pages/workspace-pages";
 import { AuthUser, demoUsers } from "@/lib/auth-demo-data";
 import { navItems } from "@/lib/dashboard-demo-data";
-import { can, mapDemoRoleToAppRole, normalizeAppRole } from "@/lib/domain/permissions";
+import { can, canAccessNavItem, mapDemoRoleToAppRole, normalizeAppRole } from "@/lib/domain/permissions";
 import { signOutSupabase } from "@/lib/supabase/auth";
 import { loadLocalTaskRecords, saveTaskRecord } from "@/lib/tasks/task-record-store";
 import { createActivityLogRecord, loadActivityLogsFromSupabase } from "@/lib/workspace/activity-log-store";
@@ -69,13 +69,14 @@ export default function Home() {
   const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
   const [headerNotifications, setHeaderNotifications] = useState<AppNotificationEntry[]>([]);
   const [departments, setDepartments] = useState<string[]>(DEFAULT_DEPARTMENTS);
-  const activeItem = useMemo(
-    () => navItems.find((item) => item.key === activeKey) ?? navItems[0],
-    [activeKey],
-  );
   const currentAppRole = useMemo<AppRole>(
     () => getEffectiveAppRole(currentUser),
     [currentUser],
+  );
+  const safeActiveKey = canAccessNavItem(currentAppRole, activeKey) ? activeKey : "dashboard";
+  const activeItem = useMemo(
+    () => navItems.find((item) => item.key === safeActiveKey) ?? navItems[0],
+    [safeActiveKey],
   );
   const finalApprover = useMemo(() => getSoleOwnerApprover(currentUser), [currentUser]);
   const approvalReviewerOptions = useMemo(() => getApprovalReviewerOptions(), []);
@@ -165,6 +166,12 @@ export default function Home() {
   useEffect(() => {
     saveStoredList(DEPARTMENTS_STORAGE_KEY, departments);
   }, [departments]);
+
+  useEffect(() => {
+    if (currentUser && !canAccessNavItem(currentAppRole, activeKey)) {
+      setActiveKey("dashboard");
+    }
+  }, [activeKey, currentAppRole, currentUser]);
 
   const createApprovalRequest = async (approval: ApprovalRequestEntry) => {
     const fallbackReviewer = approvalReviewerOptions[0];
@@ -544,12 +551,13 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-[#F7F8FA] text-slate-950">
-      <Sidebar activeKey={activeKey} onSelect={setActiveKey} />
+      <Sidebar activeKey={safeActiveKey} appRole={currentAppRole} onSelect={setActiveKey} />
       <div className="lg:pl-[240px]">
         <TopHeader
           title={activeItem.label}
-          activeKey={activeKey}
+          activeKey={safeActiveKey}
           user={currentUser}
+          appRole={currentAppRole}
           canCreate={can(currentAppRole, "tasks", "create")}
           onSelect={setActiveKey}
           onCreate={openCreateDrawer}
@@ -561,7 +569,7 @@ export default function Home() {
         <main className="px-4 py-5 lg:px-6">
           {createNotice ? <CreateCompleteNotice notice={createNotice} onClose={() => setCreateNotice(null)} /> : null}
           <ActivePage
-            activeKey={activeKey}
+            activeKey={safeActiveKey}
             onNavigate={setActiveKey}
             resolvedApprovalIds={resolvedApprovalIds}
             approvalRequests={approvalRequests}
@@ -572,6 +580,7 @@ export default function Home() {
             requesterName={currentUser.name}
             currentUserName={currentUser.name}
             currentUserId={currentUser.id}
+            currentUserDepartment={currentUser.department}
             currentAuthSource={currentUser.authSource}
             approvalReviewerOptions={approvalReviewerOptions}
             finalApprover={finalApprover}
@@ -641,6 +650,7 @@ function ActivePage({
   requesterName,
   currentUserName,
   currentUserId,
+  currentUserDepartment,
   currentAuthSource,
   approvalReviewerOptions,
   finalApprover,
@@ -675,6 +685,7 @@ function ActivePage({
   requesterName: string;
   currentUserName: string;
   currentUserId: string;
+  currentUserDepartment: string;
   currentAuthSource?: AuthUser["authSource"];
   approvalReviewerOptions: ApprovalReviewerOption[];
   finalApprover: ApprovalReviewerOption;
@@ -700,11 +711,11 @@ function ActivePage({
 }) {
   switch (activeKey) {
     case "dashboard":
-      return <DashboardPage onNavigate={onNavigate} createdTasks={createdTasks} createdIssues={createdIssues} departmentOptions={departments} />;
+      return <DashboardPage onNavigate={onNavigate} createdTasks={createdTasks} createdIssues={createdIssues} departmentOptions={departments} appRole={appRole} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} />;
     case "issues":
-      return <IssuesPage onNavigate={onNavigate} onAddLog={onAddLog} onCreateTask={onCreateTask} onUpdateIssue={onUpdateIssue} onDeleteIssue={onDeleteIssue} onRestoreIssue={onRestoreIssue} createdIssues={createdIssues} currentUserName={currentUserName} currentUserId={currentUserId} appRole={appRole} departmentOptions={departments} />;
+      return <IssuesPage onNavigate={onNavigate} onAddLog={onAddLog} onCreateTask={onCreateTask} onUpdateIssue={onUpdateIssue} onDeleteIssue={onDeleteIssue} onRestoreIssue={onRestoreIssue} createdIssues={createdIssues} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} appRole={appRole} departmentOptions={departments} />;
     case "tasks":
-      return <TasksPage appRole={appRole} requesterName={requesterName} currentUserName={currentUserName} currentUserId={currentUserId} sendbackTasks={sendbackTasks} createdTasks={createdTasks} preferredView={preferredTaskView} approvalReviewerOptions={approvalReviewerOptions} finalApprover={finalApprover} onCreateApproval={onCreateApproval} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} onRestoreTask={onRestoreTask} />;
+      return <TasksPage appRole={appRole} requesterName={requesterName} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} sendbackTasks={sendbackTasks} createdTasks={createdTasks} preferredView={preferredTaskView} approvalReviewerOptions={approvalReviewerOptions} finalApprover={finalApprover} onCreateApproval={onCreateApproval} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} onRestoreTask={onRestoreTask} />;
     case "approvals":
       return <ApprovalsPage onNavigate={onNavigate} approvalRequests={approvalRequests} resolvedApprovalIds={resolvedApprovalIds} onResolveApproval={onResolveApproval} onReviewApproval={onReviewApproval} onSendBackTask={onSendBackTask} approvalHistory={approvalHistory} onRecordApproval={onRecordApproval} currentUserName={currentUserName} currentUserId={currentUserId} appRole={appRole} />;
     case "teams":
