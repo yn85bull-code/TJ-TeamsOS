@@ -8,15 +8,9 @@ import { AppRole, Database } from "@/types/database";
 
 type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
 type DepartmentRow = Database["public"]["Tables"]["departments"]["Row"];
-type ProfileUpdate = Database["public"]["Tables"]["profiles"]["Update"];
 type SelectTable<T> = {
   select: (columns: string) => {
     order: (column: string, options: { ascending: boolean }) => Promise<{ data: T[] | null; error: Error | null }>;
-  };
-};
-type UpdateTable<T> = {
-  update: (payload: T) => {
-    eq: (column: string, value: string) => Promise<{ error: Error | null }>;
   };
 };
 
@@ -39,6 +33,13 @@ export type TeamUserInvitePayload = {
   departmentName: string;
   position?: string;
   role: AppRole;
+};
+
+export type TeamProfileUpdatePayload = {
+  profileId: string;
+  role?: AppRole;
+  departmentName?: string;
+  position?: string;
 };
 
 export const OPERATIONAL_ROLE_OPTIONS: Array<{ value: AppRole; label: string; description: string }> = [
@@ -98,18 +99,63 @@ export async function loadTeamProfilesFromSupabase() {
 }
 
 export async function updateProfileRoleInSupabase(profileId: string, role: AppRole) {
-  if (!canUseSupabaseBrowserClient() || !isSupabaseUuid(profileId)) {
-    return { source: "demo" as const };
+  return updateTeamProfileInSupabase({ profileId, role: normalizeAppRole(role) });
+}
+
+export async function updateProfileDepartmentAndPositionInSupabase(
+  profileId: string,
+  payload: Pick<TeamProfileUpdatePayload, "departmentName" | "position">,
+) {
+  return updateTeamProfileInSupabase({ profileId, ...payload });
+}
+
+export async function updateTeamProfileInSupabase(payload: TeamProfileUpdatePayload) {
+  if (!canUseSupabaseBrowserClient() || !isSupabaseUuid(payload.profileId)) {
+    return { source: "demo" as const, positionSaved: true };
   }
 
   const supabase = createSupabaseBrowserClient();
-  const profilesTable = supabase.from("profiles") as unknown as UpdateTable<ProfileUpdate>;
-  const { error } = await profilesTable
-    .update({ role: normalizeAppRole(role) })
-    .eq("id", profileId);
+  const { data } = await supabase.auth.getSession();
+  const accessToken = data.session?.access_token;
 
-  if (error) throw error;
-  return { source: "supabase" as const };
+  if (!accessToken) {
+    throw new Error("本ログイン後にユーザー情報を変更できます。");
+  }
+
+  const response = await fetch("/api/admin/update-user-profile", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(typeof result.error === "string" ? result.error : "ユーザー情報の更新に失敗しました。");
+  }
+
+  const updatedProfile = result.profile as Partial<TeamProfileEntry> | undefined;
+  const role = normalizeAppRole((updatedProfile?.role ?? payload.role ?? "member") as AppRole);
+  return {
+    source: "supabase" as const,
+    positionSaved: result.positionSaved !== false,
+    profile: updatedProfile?.id
+      ? {
+        id: updatedProfile.id,
+        displayName: updatedProfile.displayName ?? "未設定ユーザー",
+        email: updatedProfile.email ?? "",
+        departmentId: updatedProfile.departmentId,
+        departmentName: updatedProfile.departmentName ?? payload.departmentName ?? "未設定",
+        position: updatedProfile.position ?? payload.position ?? "未設定",
+        role,
+        roleLabel: getRoleLabel(role),
+        isActive: updatedProfile.isActive ?? true,
+        source: "supabase" as const,
+      } satisfies TeamProfileEntry
+      : undefined,
+  };
 }
 
 export async function inviteTeamUser(payload: TeamUserInvitePayload) {

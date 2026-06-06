@@ -6,7 +6,7 @@ import { normalizePriority, sortByPriorityAndDueDate } from "@/lib/domain/priori
 import { departmentProgress, kanbanColumns, myTasks, pageDemo, TaskPriority, TaskStatus, TaskSummary } from "@/lib/dashboard-demo-data";
 import { loadLocalTaskRecords, saveLocalTaskRecords, saveTaskRecord } from "@/lib/tasks/task-record-store";
 import { DEFAULT_DEPARTMENTS, normalizeDepartmentList } from "@/lib/workspace/department-store";
-import { OPERATIONAL_ROLE_OPTIONS, TeamProfileEntry, demoUsersToProfiles, getRoleLabel, inviteTeamUser, loadTeamProfilesFromSupabase, updateProfileRoleInSupabase } from "@/lib/workspace/profile-store";
+import { OPERATIONAL_ROLE_OPTIONS, TeamProfileEntry, demoUsersToProfiles, getRoleLabel, inviteTeamUser, loadTeamProfilesFromSupabase, updateProfileDepartmentAndPositionInSupabase, updateProfileRoleInSupabase } from "@/lib/workspace/profile-store";
 import { AppRole } from "@/types/database";
 import { Bot, Building2, ClipboardList, Inbox, ListChecks, Search, ShieldCheck, Trash2, Users } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -2447,6 +2447,7 @@ export function SettingsPage({
   const [inviteStatus, setInviteStatus] = useState("");
   const [isInviting, setIsInviting] = useState(false);
   const [profiles, setProfiles] = useState<TeamProfileEntry[]>(demoUsersToProfiles());
+  const [profileDrafts, setProfileDrafts] = useState<Record<string, { departmentName: string; position: string }>>({});
   const [profileStatus, setProfileStatus] = useState<"loading" | "ready" | "error">("loading");
   const [profileMessage, setProfileMessage] = useState("");
   const [savingProfileId, setSavingProfileId] = useState<string | null>(null);
@@ -2483,6 +2484,66 @@ export function SettingsPage({
       cancelled = true;
     };
   }, [currentUserId]);
+
+  useEffect(() => {
+    setProfileDrafts((drafts) => {
+      const nextDrafts = { ...drafts };
+      const profileIds = new Set(profiles.map((profile) => profile.id));
+
+      profiles.forEach((profile) => {
+        if (!nextDrafts[profile.id]) {
+          nextDrafts[profile.id] = {
+            departmentName: profile.departmentName,
+            position: profile.position,
+          };
+        }
+      });
+
+      Object.keys(nextDrafts).forEach((profileId) => {
+        if (!profileIds.has(profileId)) {
+          delete nextDrafts[profileId];
+        }
+      });
+
+      return nextDrafts;
+    });
+  }, [profiles]);
+
+  const getProfileDraft = (profile: TeamProfileEntry) => profileDrafts[profile.id] ?? {
+    departmentName: profile.departmentName,
+    position: profile.position,
+  };
+
+  const updateProfileDraft = (profileId: string, draft: Partial<{ departmentName: string; position: string }>) => {
+    setProfileDrafts((drafts) => ({
+      ...drafts,
+      [profileId]: {
+        departmentName: draft.departmentName ?? drafts[profileId]?.departmentName ?? "",
+        position: draft.position ?? drafts[profileId]?.position ?? "",
+      },
+    }));
+  };
+
+  const applyUpdatedProfile = (updatedProfile: TeamProfileEntry) => {
+    setProfiles((items) =>
+      items.map((item) =>
+        item.id === updatedProfile.id
+          ? {
+            ...item,
+            ...updatedProfile,
+            roleLabel: getRoleLabel(updatedProfile.role),
+          }
+          : item,
+      ),
+    );
+    setProfileDrafts((drafts) => ({
+      ...drafts,
+      [updatedProfile.id]: {
+        departmentName: updatedProfile.departmentName,
+        position: updatedProfile.position,
+      },
+    }));
+  };
 
   const inviteUser = async () => {
     if (!canChangeUserRoles) return;
@@ -2535,6 +2596,13 @@ export function SettingsPage({
 
     try {
       const result = await updateProfileRoleInSupabase(profile.id, normalizedRole);
+      if (result.profile) {
+        applyUpdatedProfile({
+          ...result.profile,
+          departmentName: profile.departmentName,
+          position: profile.position,
+        });
+      }
       setProfileMessage(result.source === "supabase"
         ? `${profile.displayName}さんの権限を${getRoleLabel(normalizedRole)}に更新しました。`
         : `${profile.displayName}さんの権限をデモ表示上で更新しました。Supabase反映には本ログインが必要です。`);
@@ -2542,6 +2610,60 @@ export function SettingsPage({
       console.warn("Profile role update failed.", error);
       setProfiles(previousProfiles);
       setProfileMessage("権限更新に失敗しました。Supabaseのprofiles権限とRLS設定を確認してください。");
+    } finally {
+      setSavingProfileId(null);
+    }
+  };
+
+  const updateProfileDepartmentAndPosition = async (profile: TeamProfileEntry) => {
+    if (!canChangeUserRoles) return;
+    const draft = getProfileDraft(profile);
+    const departmentName = draft.departmentName.trim();
+    const position = draft.position.trim() || "未設定";
+
+    if (!departmentName) {
+      setProfileMessage("部門を選択してください。");
+      return;
+    }
+
+    setSavingProfileId(profile.id);
+    setProfileMessage(`${profile.displayName}さんの部門・役職を更新しています。`);
+
+    try {
+      const result = await updateProfileDepartmentAndPositionInSupabase(profile.id, {
+        departmentName,
+        position,
+      });
+
+      if (result.profile) {
+        const updatedProfile = result.positionSaved
+          ? result.profile
+          : { ...result.profile, position: profile.position };
+        applyUpdatedProfile(updatedProfile);
+      } else {
+        setProfiles((items) =>
+          items.map((item) =>
+            item.id === profile.id
+              ? { ...item, departmentName, position }
+              : item,
+          ),
+        );
+      }
+
+      setProfileMessage(result.positionSaved
+        ? `${profile.displayName}さんの部門・役職を更新しました。`
+        : `${profile.displayName}さんの部門を更新しました。役職保存にはSupabaseで add_profile_position_20260606.sql を実行してください。`);
+    } catch (error) {
+      console.warn("Profile department/position update failed.", error);
+      setProfileDrafts((drafts) => ({
+        ...drafts,
+        [profile.id]: {
+          departmentName: profile.departmentName,
+          position: profile.position,
+        },
+      }));
+      const message = error instanceof Error ? error.message : "部門・役職の更新に失敗しました。";
+      setProfileMessage(message);
     } finally {
       setSavingProfileId(null);
     }
@@ -2742,11 +2864,12 @@ export function SettingsPage({
               </div>
 
               <div className="mt-4 overflow-x-auto">
-                <table className="w-full min-w-[820px] text-left text-sm">
+                <table className="w-full min-w-[1120px] text-left text-sm">
                   <thead className="border-y border-slate-200 bg-slate-50 text-xs text-slate-500">
                     <tr>
                       <th className="p-3">ユーザー</th>
                       <th className="p-3">所属</th>
+                      <th className="p-3">部門・役職変更</th>
                       <th className="p-3">現在の権限</th>
                       <th className="p-3">権限変更</th>
                       <th className="p-3">状態</th>
@@ -2757,6 +2880,11 @@ export function SettingsPage({
                       const isOwner = profile.role === "owner";
                       const isSaving = savingProfileId === profile.id;
                       const canEditRole = canChangeUserRoles && !isOwner;
+                      const canEditProfileDetails = canChangeUserRoles;
+                      const draft = getProfileDraft(profile);
+                      const profileDepartmentOptions = normalizeDepartmentList([...normalizedDepartments, profile.departmentName, draft.departmentName]);
+                      const normalizedDraftPosition = draft.position.trim() || "未設定";
+                      const profileDetailsChanged = draft.departmentName !== profile.departmentName || normalizedDraftPosition !== profile.position;
                       return (
                         <tr key={profile.id} className="border-b border-slate-100 hover:bg-slate-50/70">
                           <td className="p-3">
@@ -2766,6 +2894,40 @@ export function SettingsPage({
                           <td className="p-3">
                             <p className="font-bold text-slate-800">{profile.departmentName}</p>
                             <p className="mt-1 text-xs text-slate-500">{profile.position}</p>
+                          </td>
+                          <td className="p-3">
+                            <div className="grid min-w-[330px] gap-2 lg:grid-cols-[1fr_1fr_72px]">
+                              <select
+                                className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                                value={draft.departmentName}
+                                disabled={!canEditProfileDetails || isSaving}
+                                onChange={(event) => updateProfileDraft(profile.id, { departmentName: event.target.value, position: draft.position })}
+                              >
+                                {profileDepartmentOptions.map((department) => (
+                                  <option key={`${profile.id}-${department}`} value={department}>{department}</option>
+                                ))}
+                              </select>
+                              <input
+                                className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                                placeholder="役職"
+                                value={draft.position}
+                                disabled={!canEditProfileDetails || isSaving}
+                                onChange={(event) => updateProfileDraft(profile.id, { departmentName: draft.departmentName, position: event.target.value })}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter" && profileDetailsChanged && normalizedDraftPosition) {
+                                    void updateProfileDepartmentAndPosition(profile);
+                                  }
+                                }}
+                              />
+                              <button
+                                className="h-10 rounded-lg bg-slate-900 px-3 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                                type="button"
+                                disabled={!canEditProfileDetails || isSaving || !profileDetailsChanged || !draft.departmentName.trim()}
+                                onClick={() => void updateProfileDepartmentAndPosition(profile)}
+                              >
+                                保存
+                              </button>
+                            </div>
                           </td>
                           <td className="p-3">
                             <PermissionBadge rank={profile.roleLabel} />
