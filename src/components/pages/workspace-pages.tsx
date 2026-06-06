@@ -2172,7 +2172,7 @@ type TaurosAiMessage = {
   referencedKnowledgeIds?: string[];
 };
 
-const taurosAiCategories = ["全社", "営業", "買取", "販売", "書類", "整備", "陸送", "人事", "経理", "総務", "システム", "規程", "マニュアル", "FAQ"];
+const taurosAiCategories = ["全社", "営業", "業務", "規程・ルール", "マニュアル", "FAQ"];
 
 const taurosAiFaqs = [
   "納車許可の条件は？",
@@ -2187,7 +2187,7 @@ const taurosAiSeedKnowledge: TaurosKnowledgeItem[] = [
   {
     id: "kn-001",
     title: "納車管理マニュアル",
-    category: "販売",
+    category: "マニュアル",
     description: "納車許可、書類確認、入金確認の基本条件。",
     content: "納車許可は、入金確認、必要書類の回収、車両状態の最終確認、担当責任者の確認が揃ってから行います。",
     visibilityType: "company",
@@ -2211,7 +2211,7 @@ const taurosAiSeedKnowledge: TaurosKnowledgeItem[] = [
   {
     id: "kn-003",
     title: "買取キャンセル処理FAQ",
-    category: "買取",
+    category: "業務",
     description: "キャンセル時の確認、返金、社内共有の流れ。",
     content: "買取キャンセル時は、キャンセル理由、契約状況、入出金の有無を確認し、責任者へ共有します。返金や書類返却がある場合は履歴を残します。",
     visibilityType: "manager",
@@ -2222,7 +2222,7 @@ const taurosAiSeedKnowledge: TaurosKnowledgeItem[] = [
   {
     id: "kn-004",
     title: "入社手続きFAQ",
-    category: "人事",
+    category: "FAQ",
     description: "入社時に必要な書類、アカウント準備、初日対応。",
     content: "入社時は本人確認書類、雇用契約、口座情報、緊急連絡先、社内アカウント、貸与物の確認を行います。",
     visibilityType: "company",
@@ -2233,7 +2233,7 @@ const taurosAiSeedKnowledge: TaurosKnowledgeItem[] = [
   {
     id: "kn-005",
     title: "経理・支払い確認ルール",
-    category: "経理",
+    category: "規程・ルール",
     description: "支払い、請求、経理確認に関する管理者向けルール。",
     content: "経理・支払い情報はAdmin以上が確認します。Memberには回答せず、必要な場合は上長または管理者へ確認します。",
     visibilityType: "admin",
@@ -2260,7 +2260,7 @@ export function TaurosAiPage({
     {
       id: "welcome",
       sender: "ai",
-      text: "こんにちは。TaurosAIです。社内ルール、業務フロー、マニュアルについて質問してください。",
+      text: "こんにちは。TaurosAIです。社内ナレッジ、業務ルール、マニュアル、FAQについて質問してください。",
       referencedKnowledgeIds: ["kn-001", "kn-002"],
     },
   ]);
@@ -2334,7 +2334,7 @@ export function TaurosAiPage({
   };
 
   return (
-    <PageFrame title="TaurosAI" lead="社内ナレッジ、業務ルール、マニュアル、FAQをAIに質問できる社内アシスタントです。">
+    <PageFrame title="TaurosAI" lead="社内ナレッジ、業務ルール、マニュアル、FAQをAIに質問できる社内AIアシスタントです。">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex rounded-lg bg-slate-100 p-1">
           <button className={`h-10 rounded-md px-4 text-sm font-black ${activeTab === "chat" ? "bg-white text-[#D6001C] shadow-sm" : "text-slate-600"}`} type="button" onClick={() => setActiveTab("chat")}>

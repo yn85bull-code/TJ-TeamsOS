@@ -14,7 +14,7 @@ const descriptions: Record<string, string> = {
   tasks: "担当タスクの進捗、ToDoメモ、承認申請の状態を確認します。",
   approvals: "承認待ちの申請を確認し、コメント付きで承認・差し戻しします。",
   teams: "部門、役職、メンバー、権限ランクを管理します。",
-  tauros_ai: "社内ナレッジ、業務ルール、マニュアル、FAQをチャットで確認します。",
+  tauros_ai: "社内ナレッジ、業務ルール、マニュアル、FAQをAIに質問できる社内AIアシスタントです。",
   ai: "Gmail、LINE、サイボウズ、AI提案候補を人間承認前に確認します。",
   reports: "将来の出力用レポート領域です。現状はダッシュボード集計を優先します。",
   logs: "誰が、いつ、何を変更したかを監査ログとして確認します。",
@@ -37,7 +37,7 @@ const navLabels: Record<string, string> = {
 const searchIndex = [
   { title: "期限超過タスク", subtitle: "タスク一覧で期限超過を確認", target: "tasks" },
   { title: "承認待ち申請", subtitle: "承認ページで最終確認", target: "approvals" },
-  { title: "TaurosAI", subtitle: "社内ナレッジ、FAQ、業務ルールを質問", target: "tauros_ai" },
+  { title: "TaurosAI", subtitle: "社内ナレッジ、業務ルール、マニュアル、FAQを質問", target: "tauros_ai" },
   { title: "ナレッジ管理", subtitle: "マニュアル、FAQ、業務ルールの登録", target: "tauros_ai" },
   { title: "AI提案候補", subtitle: "Gmail / LINE / サイボウズ連携候補", target: "ai" },
   { title: "課題一覧", subtitle: "課題からタスク化・承認申請へ進める", target: "issues" },
