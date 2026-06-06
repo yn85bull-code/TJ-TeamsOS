@@ -12,7 +12,7 @@ const descriptions: Record<string, string> = {
   dashboard: "権限に応じて、期限、承認、AI提案、担当タスクの状況を確認します。",
   issues: "課題を親として登録し、タスク化と承認申請まで管理します。",
   tasks: "既存の通常タスクをProjectとして管理し、進捗と承認申請の状態を確認します。",
-  my_todo: "個人ToDoと所属ToDoを分けて管理します。どちらも承認フロー対象外です。",
+  my_todo: "MyToDoとTeamToDoを分けて管理します。どちらも承認フロー対象外です。",
   approvals: "承認待ちの申請を確認し、コメント付きで承認・差し戻しします。",
   teams: "所属、役職、権限、ユーザー情報をOrganizationとして確認します。",
   tauros_ai: "社内ナレッジ、業務ルール、マニュアル、FAQをAIに質問できる社内AIアシスタントです。",
@@ -38,7 +38,7 @@ const navLabels: Record<string, string> = {
 
 const searchIndex = [
   { title: "期限超過Project", subtitle: "Projectで期限超過を確認", target: "tasks" },
-  { title: "MyToDo", subtitle: "個人用ToDoと所属ToDoを管理", target: "my_todo" },
+  { title: "MyToDo", subtitle: "MyToDoとTeamToDoを管理", target: "my_todo" },
   { title: "承認待ち申請", subtitle: "承認ページで最終確認", target: "approvals" },
   { title: "TaurosAI", subtitle: "社内ナレッジ、業務ルール、マニュアル、FAQを質問", target: "tauros_ai" },
   { title: "ナレッジ管理", subtitle: "マニュアル、FAQ、業務ルールの登録", target: "tauros_ai" },

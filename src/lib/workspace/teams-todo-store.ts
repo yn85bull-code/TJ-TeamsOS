@@ -93,7 +93,7 @@ export async function loadTeamsTodos(organization?: string, userId?: string, use
     .order("due_date", { ascending: true });
 
   if (error) {
-    console.warn("Supabase TeamsToDo load failed. Keeping local records.", error);
+    console.warn("Supabase TeamToDo load failed. Keeping local records.", error);
     return { todos: localTodos, target: "localStorage" as SaveTarget };
   }
 
@@ -130,7 +130,7 @@ export async function createTeamsTodoRecord(todo: TeamsTodoEntry, userId?: strin
   const { data, error } = await teamsTodosTable.insert(payload).select("id").single();
 
   if (error) {
-    console.warn("Supabase TeamsToDo insert failed. Keeping local record.", error);
+    console.warn("Supabase TeamToDo insert failed. Keeping local record.", error);
     return { entry: todo, target: "localStorage" as SaveTarget };
   }
 
@@ -165,7 +165,7 @@ export async function updateTeamsTodoRecord(todo: TeamsTodoEntry, userId?: strin
   const { error } = await teamsTodosTable.update(payload).eq("id", todoId).eq("target_organization", todo.targetOrganization);
 
   if (error) {
-    console.warn("Supabase TeamsToDo update failed. Keeping local record.", error);
+    console.warn("Supabase TeamToDo update failed. Keeping local record.", error);
     return { target: "localStorage" as SaveTarget };
   }
 
@@ -188,7 +188,7 @@ export async function softDeleteTeamsTodoRecord(todo: TeamsTodoEntry, userId?: s
     .eq("target_organization", todo.targetOrganization);
 
   if (error) {
-    console.warn("Supabase TeamsToDo delete failed. Keeping local record.", error);
+    console.warn("Supabase TeamToDo delete failed. Keeping local record.", error);
     return { target: "localStorage" as SaveTarget };
   }
 

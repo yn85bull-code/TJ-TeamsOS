@@ -71,7 +71,7 @@ export async function POST(request: NextRequest) {
     ]);
 
     if (!requesterProfile || !requesterProfile.is_active || !assignmentRoles.includes(requesterProfile.role)) {
-      return NextResponse.json({ error: "所属ToDoの指名はOwner/Admin/Manager/Leaderのみ実行できます。" }, { status: 403 });
+      return NextResponse.json({ error: "TeamToDoの指名はOwner/Admin/Manager/Leaderのみ実行できます。" }, { status: 403 });
     }
     if (!assigneeProfile || !assigneeProfile.is_active) {
       return NextResponse.json({ error: "指名先ユーザーが見つからない、または停止中です。" }, { status: 404 });
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ todo: { id: todo.id } });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "所属ToDoの指名処理でエラーが発生しました。";
+    const message = error instanceof Error ? error.message : "TeamToDoの指名処理でエラーが発生しました。";
     return NextResponse.json({ error: message }, { status: message.includes("service_role") ? 500 : 400 });
   }
 }

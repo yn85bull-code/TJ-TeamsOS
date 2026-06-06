@@ -51,7 +51,7 @@ supabase/add_tauros_ai_knowledge_20260606.sql
 
 ## 5. MyToDo
 
-個人用ToDo・メモの `my_todos` テーブルを追加します。
+MyToDo・メモの `my_todos` テーブルを追加します。
 
 ```text
 supabase/add_my_todos_20260606.sql
@@ -59,19 +59,19 @@ supabase/add_my_todos_20260606.sql
 
 MyToDoは通常タスクや承認フローとは別物です。RLSは `auth.uid() = user_id` に固定しているため、Owner / Admin / Managerでも他ユーザーのMyToDoは取得・更新できません。
 
-## 6. Organization / TeamsToDo
+## 6. Organization / TeamToDo
 
-Organization用のprofiles追加カラム、Leader権限、所属内TeamsToDoの `teams_todos` テーブルを追加します。
+Organization用のprofiles追加カラム、Leader権限、TeamToDoの `teams_todos` テーブルを追加します。
 
 ```text
 supabase/add_teams_todos_and_organization_20260606.sql
 supabase/add_teams_todo_assignments_20260606.sql
 ```
 
-- TeamsToDoはProject/tasks/approvalsとは別物です
+- TeamToDoはProject/tasks/approvalsとは別物です
 - 取得範囲はログインユーザーの `organization` / `department` に限定します
 - 登録・編集・削除はOwner / Admin / Manager / Leaderに限定します
-- Memberは所属TeamsToDoの閲覧のみです
+- MemberはTeamToDoの閲覧のみです
 - 登録・編集時に所属内ユーザーを指名すると、指名先のMyToDoへ個別登録します
 - 指名先MyToDoは本人の `user_id` に紐づくため、Owner/Admin/Managerでも通常画面では中身を閲覧できません
 - 停止中/退職ユーザーはアプリ側ログイン時にもブロックします

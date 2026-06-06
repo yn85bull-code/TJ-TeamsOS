@@ -1189,7 +1189,7 @@ export function TasksPage({
   };
 
   return (
-    <PageFrame title="Project" lead="通常タスク、チームタスク、承認待ち、差し戻しをProjectとして管理します。MyToDo/TeamsToDoとは分けて扱います。">
+    <PageFrame title="Project" lead="通常タスク、チームタスク、承認待ち、差し戻しをProjectとして管理します。MyToDo/TeamToDoとは分けて扱います。">
       <PanelCard className="p-4">
         <div className="flex flex-wrap gap-2">
           {taskTabs.map((tab) => (
@@ -4020,7 +4020,7 @@ export function MyTodoPage({
   };
 
   return (
-    <PageFrame title="MyToDo" lead="課題化・タスク化する前の個人ToDoとメモを管理します。承認フローには連動しません。">
+    <PageFrame title="MyToDo" lead="課題化・タスク化する前のMyToDoとメモを管理します。承認フローには連動しません。">
       <section className="grid gap-4 lg:grid-cols-3">
         <PanelCard className="p-5">
           <div className="flex items-center gap-3">
@@ -4059,8 +4059,8 @@ export function MyTodoPage({
 
       <div className="flex flex-wrap gap-2">
         {[
-          { key: "mine", label: "自分のToDo", count: activeTodos.length },
-          { key: "team", label: "所属ToDo", count: activeTeamsTodos.length },
+          { key: "mine", label: "MyToDo", count: activeTodos.length },
+          { key: "team", label: "TeamToDo", count: activeTeamsTodos.length },
         ].map((tab) => (
           <button
             key={tab.key}
@@ -4183,7 +4183,7 @@ export function MyTodoPage({
                         <MyTodoPriorityBadge priority={todo.priority} />
                         <MyTodoStatusBadge status={todo.status} />
                         {todo.sourceType === "teams_todo" ? (
-                          <span className="inline-flex rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-black text-emerald-700 ring-1 ring-emerald-200">所属ToDoから指名</span>
+                          <span className="inline-flex rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-black text-emerald-700 ring-1 ring-emerald-200">TeamToDoから指名</span>
                         ) : null}
                         <span className={`text-xs font-bold ${isMyTodoOverdue(todo.dueDate, todo.status) ? "text-[#D6001C]" : "text-slate-500"}`}>{formatMyTodoDueDate(todo.dueDate)}</span>
                       </div>
@@ -4227,7 +4227,7 @@ export function MyTodoPage({
               {activeTodos.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-slate-200 p-8 text-center">
                   <p className="font-black text-slate-900">MyToDoはまだありません。</p>
-                  <p className="mt-2 text-sm font-semibold text-slate-500">小さなメモや個人ToDoを登録できます。</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-500">小さなメモやMyToDoを登録できます。</p>
                 </div>
               ) : null}
             </div>
@@ -4284,7 +4284,7 @@ function TeamsTodoSection({
         if (!cancelled) setTeamProfiles(result.profiles.length ? result.profiles : demoUsersToProfiles());
       })
       .catch((error) => {
-        console.warn("TeamsToDo assignee profile load failed.", error);
+        console.warn("TeamToDo assignee profile load failed.", error);
         if (!cancelled) setTeamProfiles(demoUsersToProfiles());
       });
 
@@ -4296,7 +4296,7 @@ function TeamsTodoSection({
   const createTodo = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!canManageTeamsTodo) {
-      setNotice("TeamsToDoの登録はManager以上の権限で利用できます。");
+      setNotice("TeamToDoの登録はManager以上の権限で利用できます。");
       return;
     }
     const title = draft.title.trim();
@@ -4325,7 +4325,7 @@ function TeamsTodoSection({
     });
     setDraft(emptyMyTodoForm);
     setAssigneeId("");
-    setNotice(selectedAssignee ? `TeamsToDoを登録し、${selectedAssignee.displayName}さんのMyToDoへ入れます。` : "TeamsToDoを登録しました。");
+    setNotice(selectedAssignee ? `TeamToDoを登録し、${selectedAssignee.displayName}さんのMyToDoへ入れます。` : "TeamToDoを登録しました。");
   };
 
   const startEdit = (todo: TeamsTodoEntry) => {
@@ -4369,7 +4369,7 @@ function TeamsTodoSection({
     setEditingTodoId(null);
     setEditDraft(emptyMyTodoForm);
     setEditAssigneeId("");
-    setNotice(selectedEditAssignee ? `TeamsToDoを更新し、${selectedEditAssignee.displayName}さんのMyToDoへ入れます。` : "TeamsToDoを更新しました。");
+    setNotice(selectedEditAssignee ? `TeamToDoを更新し、${selectedEditAssignee.displayName}さんのMyToDoへ入れます。` : "TeamToDoを更新しました。");
   };
 
   const updateTodoStatus = (todo: TeamsTodoEntry, status: MyTodoStatus) => {
@@ -4381,7 +4381,7 @@ function TeamsTodoSection({
       completedAt: status === "done" ? todo.completedAt ?? now : undefined,
       updatedAt: now,
     });
-    setNotice(status === "done" ? "TeamsToDoを完了にしました。" : "ステータスを更新しました。");
+    setNotice(status === "done" ? "TeamToDoを完了にしました。" : "ステータスを更新しました。");
   };
 
   const updateTodoPriority = (todo: TeamsTodoEntry, priority: MyTodoPriority) => {
@@ -4399,7 +4399,7 @@ function TeamsTodoSection({
     const now = formatMyTodoDateTime(new Date());
     onDeleteTeamsTodo?.({ ...todo, deletedAt: now, updatedAt: now });
     if (editingTodoId === todo.id) setEditingTodoId(null);
-    setNotice("TeamsToDoを削除しました。");
+    setNotice("TeamToDoを削除しました。");
   };
 
   return (
@@ -4407,7 +4407,7 @@ function TeamsTodoSection({
       <PanelCard className="p-5">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h3 className="font-black">所属ToDo登録</h3>
+            <h3 className="font-black">TeamToDo登録</h3>
             <p className="mt-1 text-xs font-semibold text-slate-500">
               {currentUserDepartment}内で共有する軽いToDoです。承認フローには入りません。
             </p>
@@ -4418,7 +4418,7 @@ function TeamsTodoSection({
         </div>
         {!canManageTeamsTodo ? (
           <p className="mt-4 rounded-lg border border-amber-100 bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-700">
-            Memberは所属ToDoを確認できますが、新規登録・編集・削除はできません。
+            MemberはTeamToDoを確認できますが、新規登録・編集・削除はできません。
           </p>
         ) : null}
         <form className="mt-5 grid gap-4" onSubmit={createTodo}>
@@ -4471,7 +4471,7 @@ function TeamsTodoSection({
             <form className="grid gap-4" onSubmit={saveEdit}>
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs font-bold text-[#D6001C]">所属ToDo編集中</p>
+                  <p className="text-xs font-bold text-[#D6001C]">TeamToDo編集中</p>
                   <h3 className="mt-1 font-black">{editingTodo.title}</h3>
                 </div>
                 <button className="grid size-9 place-items-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50" type="button" aria-label="編集を閉じる" onClick={() => setEditingTodoId(null)}>
@@ -4524,7 +4524,7 @@ function TeamsTodoSection({
         <PanelCard className="p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="font-black">TeamsToDo一覧</h3>
+              <h3 className="font-black">TeamToDo一覧</h3>
               <p className="mt-1 text-xs font-semibold text-slate-500">{currentUserDepartment}に紐づくToDoのみ表示します。</p>
             </div>
             <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-bold text-slate-600">{activeTeamsTodos.length}件</span>
@@ -4581,8 +4581,8 @@ function TeamsTodoSection({
             ))}
             {activeTeamsTodos.length === 0 ? (
               <div className="rounded-lg border border-dashed border-slate-200 p-8 text-center">
-                <p className="font-black text-slate-900">TeamsToDoはまだありません。</p>
-                <p className="mt-2 text-sm font-semibold text-slate-500">所属内で共有したい軽いToDoを登録できます。</p>
+                <p className="font-black text-slate-900">TeamToDoはまだありません。</p>
+                <p className="mt-2 text-sm font-semibold text-slate-500">チーム内で共有したい軽いToDoを登録できます。</p>
               </div>
             ) : null}
           </div>

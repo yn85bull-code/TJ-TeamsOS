@@ -1138,7 +1138,7 @@ function isSameTeamsTodo(left: TeamsTodoEntry, right: TeamsTodoEntry) {
 function buildAssignedMyTodoMemo(todo: TeamsTodoEntry) {
   return [
     todo.memo,
-    `所属ToDoから指名: ${todo.targetOrganization}`,
+    `TeamToDoから指名: ${todo.targetOrganization}`,
     todo.assigneeName ? `指名先: ${todo.assigneeName}` : "",
   ].filter(Boolean).join("\n");
 }

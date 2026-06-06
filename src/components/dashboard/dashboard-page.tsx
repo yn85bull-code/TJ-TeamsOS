@@ -370,7 +370,7 @@ export function MyTodoDashboardPanel({ onNavigate, myTodos = [], teamsTodos = []
       <div className="flex items-center justify-between">
         <div>
           <h3 className="font-bold">ToDo</h3>
-          <p className="mt-1 text-xs font-semibold text-slate-500">個人ToDo / 所属ToDoの確認</p>
+          <p className="mt-1 text-xs font-semibold text-slate-500">MyToDo / TeamToDoの確認</p>
         </div>
         <button className="text-xs font-bold text-slate-700" type="button" onClick={() => onNavigate("my_todo")}>
           管理する
@@ -391,7 +391,7 @@ export function MyTodoDashboardPanel({ onNavigate, myTodos = [], teamsTodos = []
           </button>
         ))}
         {dashboardTodos.length === 0 ? <p className="rounded-lg bg-slate-50 p-4 text-sm font-semibold text-slate-500">未完了のMyToDoはありません。</p> : null}
-        <p className="mt-3 text-[11px] font-black uppercase tracking-wide text-slate-400">TeamsToDo</p>
+        <p className="mt-3 text-[11px] font-black uppercase tracking-wide text-slate-400">TeamToDo</p>
         {dashboardTeamsTodos.map((todo) => (
           <button key={todo.id} className="grid gap-2 rounded-lg border border-slate-100 bg-slate-50 p-3 text-left transition hover:border-[#D6001C] hover:bg-white" type="button" onClick={() => onNavigate("my_todo")}>
             <div className="flex items-start justify-between gap-3">
@@ -408,7 +408,7 @@ export function MyTodoDashboardPanel({ onNavigate, myTodos = [], teamsTodos = []
             </div>
           </button>
         ))}
-        {dashboardTeamsTodos.length === 0 ? <p className="rounded-lg bg-slate-50 p-4 text-sm font-semibold text-slate-500">未完了のTeamsToDoはありません。</p> : null}
+        {dashboardTeamsTodos.length === 0 ? <p className="rounded-lg bg-slate-50 p-4 text-sm font-semibold text-slate-500">未完了のTeamToDoはありません。</p> : null}
       </div>
     </PanelCard>
   );
