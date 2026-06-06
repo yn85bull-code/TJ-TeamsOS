@@ -1,81 +1,65 @@
-import { Bot, CheckCircle2, ClipboardList, ShieldCheck, X } from "lucide-react";
+import { ClipboardList, X } from "lucide-react";
 import { useState } from "react";
-
-type CreateType = "issue" | "task" | "approval" | "ai";
+import { DEFAULT_DEPARTMENTS, normalizeDepartmentList } from "@/lib/workspace/department-store";
 
 export type CreateDrawerPayload = {
-  type: CreateType;
+  type: "issue";
   title: string;
   dueDate: string;
   displayDueDate: string;
   department: string;
   category1: string;
   category2: string;
-  assignee: string;
+  registrant: string;
   priority: string;
   asIs: string;
+  toBe: string;
   registeredAt: string;
   label: string;
 };
-
-const createOptions: Array<{
-  key: CreateType;
-  label: string;
-  description: string;
-  icon: typeof ClipboardList;
-}> = [
-  { key: "issue", label: "課題を作成", description: "As-Is、To-Be、対策を登録します。", icon: ClipboardList },
-  { key: "task", label: "タスクを作成", description: "担当者、期限、進捗を登録します。", icon: CheckCircle2 },
-  { key: "approval", label: "承認申請", description: "承認者へ確認依頼を送ります。", icon: ShieldCheck },
-  { key: "ai", label: "AI提案候補", description: "AI Secretary連携用の候補を登録します。", icon: Bot },
-];
 
 export function CreateDrawer({
   open,
   onClose,
   onCreated,
+  departmentOptions = DEFAULT_DEPARTMENTS,
+  currentUserName = "山田 太郎",
 }: {
   open: boolean;
   onClose: () => void;
   onCreated: (payload: CreateDrawerPayload) => void;
+  departmentOptions?: string[];
+  currentUserName?: string;
 }) {
-  const [type, setType] = useState<CreateType>("issue");
   const [title, setTitle] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [department, setDepartment] = useState("");
   const [category1, setCategory1] = useState("事業課題");
   const [category2, setCategory2] = useState("顕在課題");
-  const [assignee, setAssignee] = useState("山田 太郎");
   const [priority, setPriority] = useState("Must");
   const [asIs, setAsIs] = useState("");
+  const [toBe, setToBe] = useState("");
+  const departments = normalizeDepartmentList(departmentOptions.length ? departmentOptions : DEFAULT_DEPARTMENTS);
 
   if (!open) return null;
 
-  const selected = createOptions.find((item) => item.key === type) ?? createOptions[0];
   const registrationDateTime = formatDateTime(new Date());
-  const canSubmit = Boolean(title.trim() && dueDate && department.trim() && asIs.trim());
+  const canSubmit = Boolean(title.trim() && dueDate && department.trim() && asIs.trim() && toBe.trim());
   const resetForm = () => {
     setTitle("");
     setDueDate("");
     setDepartment("");
     setCategory1("事業課題");
     setCategory2("顕在課題");
-    setAssignee("山田 太郎");
     setPriority("Must");
     setAsIs("");
+    setToBe("");
   };
   const closeDrawer = () => {
     resetForm();
     onClose();
   };
-  const helperText =
-    type === "issue"
-      ? "課題は、現状の困りごとや改善テーマです。課題を登録し、必要に応じて具体的なタスクへ振り分けます。"
-      : type === "task"
-        ? "タスクは、課題を解決するための具体的な作業です。担当者、期限、進捗を管理します。"
-        : type === "approval"
-          ? "承認申請は、実行内容や完了内容を承認者に確認してもらうための依頼です。"
-          : "AI提案候補は、AI Secretaryが作成した下書きを人間が確認する前の状態です。";
+  const helperText = "課題は、現状の困りごとや改善テーマです。課題を登録し、必要に応じて具体的なタスクへ振り分けます。";
 
   return (
     <div className="fixed inset-0 z-50">
@@ -92,27 +76,10 @@ export function CreateDrawer({
         </header>
 
         <div className="grid gap-5 overflow-y-auto p-6">
-          <section className="grid gap-3 sm:grid-cols-2">
-            {createOptions.map((item) => {
-              const Icon = item.icon;
-              const active = item.key === type;
-              return (
-                <button
-                  key={item.key}
-                  className={`rounded-xl border p-4 text-left transition ${
-                    active ? "border-[#D6001C] bg-red-50" : "border-slate-200 bg-white hover:border-slate-300"
-                  }`}
-                  type="button"
-                  onClick={() => {
-                    setType(item.key);
-                  }}
-                >
-                  <Icon className={active ? "text-[#D6001C]" : "text-slate-500"} size={20} />
-                  <p className="mt-3 font-bold">{item.label}</p>
-                  <p className="mt-1 text-sm leading-5 text-slate-500">{item.description}</p>
-                </button>
-              );
-            })}
+          <section className="rounded-xl border border-red-100 bg-red-50 p-4">
+            <ClipboardList className="text-[#D6001C]" size={22} />
+            <h3 className="mt-3 font-bold text-slate-950">課題を登録</h3>
+            <p className="mt-1 text-sm leading-6 text-slate-600">As-Is、To-Be、分類、登録者、期限を登録します。タスク化と承認申請は登録後の課題フローから行います。</p>
           </section>
 
           <form
@@ -121,18 +88,19 @@ export function CreateDrawer({
               event.preventDefault();
               if (!canSubmit) return;
               onCreated({
-                type,
+                type: "issue",
                 title: title.trim(),
                 dueDate,
                 displayDueDate: formatDateForDisplay(dueDate),
                 department: department.trim(),
                 category1,
                 category2,
-                assignee,
+                registrant: currentUserName,
                 priority,
                 asIs: asIs.trim(),
+                toBe: toBe.trim(),
                 registeredAt: registrationDateTime,
-                label: selected.label,
+                label: "課題を作成",
               });
               resetForm();
             }}
@@ -141,21 +109,19 @@ export function CreateDrawer({
               {helperText}
             </div>
 
-            {type === "issue" ? (
-              <div className="grid gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-600">
-                <div>
-                  <p className="font-bold text-slate-800">課題分類大区分</p>
-                  <p><strong>事業課題:</strong> 売上・利益・出店・集客・サービス拡大など、事業成長に関わる課題。</p>
-                  <p><strong>組織課題:</strong> 人・体制・役割・責任範囲・評価・マネジメントの課題。</p>
-                  <p><strong>業務課題:</strong> 日々のオペレーション・手順・処理漏れ・業務フローの課題。</p>
-                </div>
-                <div>
-                  <p className="font-bold text-slate-800">課題分類小区分</p>
-                  <p><strong>顕在課題:</strong> すでに問題として見えており、業務や数字に影響が出ている課題。</p>
-                  <p><strong>潜在課題:</strong> まだ大きな問題にはなっていないが、将来的にリスクになる可能性がある課題。</p>
-                </div>
+            <div className="grid gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 text-xs leading-5 text-slate-600">
+              <div>
+                <p className="font-bold text-slate-800">課題分類大区分</p>
+                <p><strong>事業課題:</strong> 売上・利益・出店・集客・サービス拡大など、事業成長に関わる課題。</p>
+                <p><strong>組織課題:</strong> 人・体制・役割・責任範囲・評価・マネジメントの課題。</p>
+                <p><strong>業務課題:</strong> 日々のオペレーション・手順・処理漏れ・業務フローの課題。</p>
               </div>
-            ) : null}
+              <div>
+                <p className="font-bold text-slate-800">課題分類小区分</p>
+                <p><strong>顕在課題:</strong> すでに問題として見えており、業務や数字に影響が出ている課題。</p>
+                <p><strong>潜在課題:</strong> まだ大きな問題にはなっていないが、将来的にリスクになる可能性がある課題。</p>
+              </div>
+            </div>
 
             <label className="grid gap-2 text-sm font-bold text-slate-700">
               <span className="flex items-center gap-2">タイトル <RequiredBadge /></span>
@@ -168,12 +134,10 @@ export function CreateDrawer({
               />
             </label>
 
-            {type === "issue" ? (
-              <label className="grid gap-2 text-sm font-bold text-slate-700">
-                登録日時 / 発生日
-                <input className="h-11 rounded-lg border border-slate-200 bg-slate-50 px-3 font-mono text-sm font-semibold text-slate-700 outline-none" value={registrationDateTime} readOnly />
-              </label>
-            ) : null}
+            <label className="grid gap-2 text-sm font-bold text-slate-700">
+              登録日時 / 発生日
+              <input className="h-11 rounded-lg border border-slate-200 bg-slate-50 px-3 font-mono text-sm font-semibold text-slate-700 outline-none" value={registrationDateTime} readOnly />
+            </label>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="grid gap-2 text-sm font-bold text-slate-700">
@@ -195,13 +159,8 @@ export function CreateDrawer({
 
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="grid gap-2 text-sm font-bold text-slate-700">
-                担当者
-                <select className="h-11 rounded-lg border border-slate-200 px-3 font-normal outline-none focus:border-[#D6001C]" value={assignee} onChange={(event) => setAssignee(event.target.value)}>
-                  <option>山田 太郎</option>
-                  <option>佐藤 一郎</option>
-                  <option>鈴木 太郎</option>
-                  <option>未設定</option>
-                </select>
+                登録者
+                <input className="h-11 rounded-lg border border-slate-200 bg-slate-50 px-3 font-normal text-slate-700 outline-none" value={currentUserName} readOnly />
               </label>
               <label className="grid gap-2 text-sm font-bold text-slate-700">
                 <span className="flex items-center gap-2">期限 <RequiredBadge /></span>
@@ -226,13 +185,19 @@ export function CreateDrawer({
               </label>
               <label className="grid gap-2 text-sm font-bold text-slate-700">
                 <span className="flex items-center gap-2">部門 <RequiredBadge /></span>
-                <input
+                <select
                   className="h-11 rounded-lg border border-slate-200 px-3 font-normal outline-none focus:border-[#D6001C] focus:ring-4 focus:ring-red-100"
-                  placeholder="例: 営業部、買取営業、情シス"
                   required
                   value={department}
                   onChange={(event) => setDepartment(event.target.value)}
-                />
+                >
+                  <option value="">部門を選択</option>
+                  {departments.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
               </label>
             </div>
 
@@ -244,6 +209,17 @@ export function CreateDrawer({
                 required
                 value={asIs}
                 onChange={(event) => setAsIs(event.target.value)}
+              />
+            </label>
+
+            <label className="grid gap-2 text-sm font-bold text-slate-700">
+              <span className="flex items-center gap-2">To-Be <RequiredBadge /></span>
+              <textarea
+                className="min-h-32 rounded-lg border border-slate-200 px-3 py-2 font-normal outline-none focus:border-[#D6001C] focus:ring-4 focus:ring-red-100"
+                placeholder="完了後にどのような状態にしたいかを入力"
+                required
+                value={toBe}
+                onChange={(event) => setToBe(event.target.value)}
               />
             </label>
 

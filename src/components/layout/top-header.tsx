@@ -107,14 +107,14 @@ export function TopHeader({
 
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 px-4 py-4 backdrop-blur lg:px-6">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-        <div>
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between xl:gap-6">
+        <div className="min-w-0">
           <h2 className="text-2xl font-bold tracking-tight text-slate-950">{displayTitle}</h2>
           <p className="mt-1 text-sm text-slate-500">{descriptions[activeKey] ?? "Tauros TeamOSの状態を確認できます。"}</p>
         </div>
 
-        <div className="flex flex-col gap-3 md:flex-row md:items-center">
-          <div className="relative md:w-[380px]">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end xl:min-w-0">
+          <div className="relative w-full md:w-[380px] xl:min-w-[320px]">
             <label className="relative block">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
               <input
@@ -148,7 +148,7 @@ export function TopHeader({
             ) : null}
           </div>
 
-          <div className="relative flex items-center gap-2">
+          <div className="relative flex shrink-0 items-center gap-2">
             <button className="relative grid size-10 place-items-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm hover:border-[#D6001C]" type="button" onClick={() => selectPanel("notifications")} aria-label="通知">
               <Bell size={18} />
               {unreadCount ? <span className="absolute -right-1 -top-1 grid size-5 place-items-center rounded-full bg-[#D6001C] text-[10px] font-bold text-white">{unreadCount}</span> : null}
@@ -165,7 +165,7 @@ export function TopHeader({
               <ChevronDown size={16} className="text-slate-500" />
             </button>
             <button
-              className="inline-flex h-11 items-center gap-2 rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white shadow-lg shadow-red-200 transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+              className="inline-flex h-11 min-w-[136px] shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white shadow-lg shadow-red-200 transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
               type="button"
               disabled={!canCreate}
               title={canCreate ? "新規作成" : "この権限では新規作成できません"}

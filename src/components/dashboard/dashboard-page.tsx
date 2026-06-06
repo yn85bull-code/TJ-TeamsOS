@@ -7,7 +7,6 @@ import {
   TaskStatus,
   TaskSummary,
   aiRoadmap,
-  departmentProgress,
   designMode,
   dueDateChartData,
   kanbanColumns,
@@ -16,6 +15,7 @@ import {
   pageDemo,
   recentActivities,
 } from "@/lib/dashboard-demo-data";
+import { DEFAULT_DEPARTMENTS, normalizeDepartmentList } from "@/lib/workspace/department-store";
 import {
   ArrowRight,
   Bot,
@@ -38,9 +38,10 @@ type DashboardPageProps = {
   onNavigate: (key: string) => void;
   createdTasks?: TaskSummary[];
   createdIssues?: Array<{ owner: string }>;
+  departmentOptions?: string[];
 };
 
-export function DashboardPage({ onNavigate, createdTasks = [], createdIssues = [] }: DashboardPageProps) {
+export function DashboardPage({ onNavigate, createdTasks = [], createdIssues = [], departmentOptions = DEFAULT_DEPARTMENTS }: DashboardPageProps) {
   const todayLabel = useMemo(() => formatTodayLabel(), []);
 
   return (
@@ -63,7 +64,7 @@ export function DashboardPage({ onNavigate, createdTasks = [], createdIssues = [
 
       <section className="grid gap-5 xl:grid-cols-3">
         <DueDateDonutCard />
-        <DepartmentProgressCard onNavigate={onNavigate} />
+        <DepartmentProgressCard onNavigate={onNavigate} createdTasks={createdTasks} departmentOptions={departmentOptions} />
         <RecentActivityCard onNavigate={onNavigate} />
       </section>
 
@@ -106,10 +107,11 @@ export function KpiSummaryGrid({ onNavigate, createdTasks = [], createdIssues = 
 }
 
 function buildDashboardKpis(createdTasks: TaskSummary[] = [], createdIssues: Array<{ owner: string }> = []): DashboardKpi[] {
-  const shownTasks = [...myTasks, ...createdTasks, ...kanbanColumns.flatMap((column) => column.tasks)];
+  const openCreatedTasks = createdTasks.filter((task) => task.status !== "done" && task.progress < 100);
+  const shownTasks = [...myTasks, ...openCreatedTasks, ...kanbanColumns.flatMap((column) => column.tasks)];
   const hiddenKanbanTaskCount = kanbanColumns.reduce((sum, column) => sum + column.more, 0);
   const totalKanbanTaskCount = kanbanColumns.reduce((sum, column) => sum + column.count, 0);
-  const todayDue = (dueDateChartData[0]?.value ?? 0) + createdTasks.filter((task) => task.dueDate === "05/31").length;
+  const todayDue = (dueDateChartData[0]?.value ?? 0) + openCreatedTasks.filter((task) => task.dueDate === "05/31").length;
   const overdue = shownTasks.filter((task) => task.status !== "done" && task.dueDate <= "05/31").length;
   const approvalWaiting = kanbanColumns.find((column) => column.id === "approval_pending")?.count ?? 0;
   const mustPriority = shownTasks.filter((task) => task.priority === "must").length + Math.round(hiddenKanbanTaskCount / 7);
@@ -192,20 +194,24 @@ export function MyTasksPanel({ onNavigate }: DashboardPageProps) {
 
 export function TaskRow({ task }: { task: TaskSummary }) {
   return (
-    <article className="grid grid-cols-[20px_minmax(0,1fr)_56px] items-center gap-3">
+    <article className="grid grid-cols-[22px_minmax(0,1fr)] items-start gap-3 rounded-lg py-1">
       <Circle className={task.progress > 50 ? "text-[#D6001C]" : "text-slate-300"} size={16} />
       <div className="min-w-0">
-        <div className="grid gap-2 lg:grid-cols-[minmax(0,1.2fr)_minmax(120px,0.9fr)_52px_60px] lg:items-center">
-          <p className="truncate text-sm font-semibold text-slate-900">{task.title}</p>
-          <p className="truncate text-xs text-slate-500">{task.projectName}</p>
-          <p className="text-xs font-semibold text-[#D6001C]">{task.dueDate}</p>
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-slate-900">{task.title}</p>
+            <p className="mt-1 truncate text-xs text-slate-500">{task.projectName}</p>
+          </div>
+          <span className="shrink-0 text-right text-xs font-bold text-slate-700">{task.progress}%</span>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span className="shrink-0 text-xs font-semibold text-[#D6001C]">{task.dueDate}</span>
           <PriorityBadge priority={task.priority} />
         </div>
         <div className="mt-2">
           <ProgressBar value={task.progress} />
         </div>
       </div>
-      <span className="text-right text-xs font-bold text-slate-700">{task.progress}%</span>
     </article>
   );
 }
@@ -245,9 +251,9 @@ export function TeamKanban({ onNavigate }: DashboardPageProps) {
           ))}
         </div>
       ) : null}
-      <div className="mt-4 grid gap-3 lg:grid-cols-4">
+      <div className="mt-4 grid gap-3 md:grid-cols-2 min-[1900px]:grid-cols-4">
         {visibleColumns.map((column) => (
-          <div key={column.id} className={`rounded-xl p-3 ${column.tone}`}>
+          <div key={column.id} className={`min-w-0 rounded-xl p-3 ${column.tone}`}>
             <div className="mb-3 flex items-center justify-between text-sm font-bold">
               <span>{column.title}</span>
               <span>{column.count}</span>
@@ -256,7 +262,7 @@ export function TeamKanban({ onNavigate }: DashboardPageProps) {
               {column.tasks.map((task) => (
                 <TaskCard key={task.id} task={task} />
               ))}
-              <button className="rounded-lg bg-white/70 py-2 text-xs font-bold text-slate-600 transition hover:bg-white hover:text-[#D6001C]" type="button" onClick={() => onNavigate("tasks")}>
+              <button className="whitespace-nowrap rounded-lg bg-white/70 px-3 py-2 text-xs font-bold text-slate-600 transition hover:bg-white hover:text-[#D6001C]" type="button" onClick={() => onNavigate("tasks")}>
                 + {column.more}件のタスク
               </button>
             </div>
@@ -274,12 +280,12 @@ export function TeamKanban({ onNavigate }: DashboardPageProps) {
 export function TaskCard({ task }: { task: TaskSummary }) {
   return (
     <article className="rounded-lg border border-slate-100 bg-white p-3 shadow-sm">
-      <p className="text-sm font-bold text-slate-900">{task.title}</p>
-      <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-        <span>{task.assigneeName}</span>
-        <span>{task.dueDate}</span>
+      <p className="line-clamp-2 min-h-10 text-sm font-bold leading-5 text-slate-900">{task.title}</p>
+      <div className="mt-3 flex min-w-0 items-center justify-between gap-2 text-xs text-slate-500">
+        <span className="min-w-0 truncate">{task.assigneeName}</span>
+        <span className="shrink-0 font-semibold">{task.dueDate}</span>
       </div>
-      <div className="mt-3 flex items-center justify-between">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         <PriorityBadge priority={task.priority} />
         <StatusBadge status={task.status} />
       </div>
@@ -378,28 +384,93 @@ export function DueDateDonutCard() {
   );
 }
 
-export function DepartmentProgressCard({ onNavigate }: DashboardPageProps) {
-  const departmentLabels = ["営業部", "買取部", "販売部", "総務部", "システム部"];
+type DepartmentProgressItem = {
+  department: string;
+  progress: number;
+  taskCount: number;
+};
+
+const DEPARTMENT_ALIAS_GROUPS = [
+  ["営業部", "営業本部", "営業"],
+  ["買取部", "買取営業"],
+  ["販売部", "販売"],
+  ["総務部", "総務", "管理本部"],
+  ["システム部", "情シス", "システム推進"],
+];
+
+export function DepartmentProgressCard({ onNavigate, createdTasks = [], departmentOptions = DEFAULT_DEPARTMENTS }: DashboardPageProps) {
+  const progressItems = useMemo(
+    () => buildDepartmentProgress(
+      departmentOptions,
+      [...myTasks, ...createdTasks, ...kanbanColumns.flatMap((column) => column.tasks)],
+    ),
+    [createdTasks, departmentOptions],
+  );
+  const countedTaskTotal = progressItems.reduce((sum, item) => sum + item.taskCount, 0);
 
   return (
     <PanelCard className="p-5">
       <h3 className="font-bold">部門別進捗率</h3>
-      <p className="mt-1 text-xs font-semibold text-slate-500">集計元: タスク進捗率を部門別に平均化</p>
+      <p className="mt-1 text-xs font-semibold text-slate-500">集計元: タスク進捗率を部門別に平均化（{countedTaskTotal}件）</p>
       <div className="mt-5 grid gap-4">
-        {departmentProgress.map((item, index) => (
-          <div key={item.department} className="grid grid-cols-[72px_1fr_42px] items-center gap-3 text-sm">
-            <span className="font-semibold text-slate-700">{departmentLabels[index] ?? item.department}</span>
+        {progressItems.map((item) => (
+          <div key={item.department} className="grid grid-cols-[88px_1fr_72px] items-center gap-3 text-sm">
+            <span className="truncate font-semibold text-slate-700">{item.department}</span>
             <ProgressBar value={item.progress} tone={item.progress >= 75 ? "bg-emerald-500" : item.progress >= 60 ? "bg-orange-400" : "bg-[#D6001C]"} />
-            <strong className="text-right text-slate-700">{item.progress}%</strong>
+            <strong className="text-right text-slate-700">{item.taskCount ? `${item.progress}%` : "対象なし"}</strong>
           </div>
         ))}
       </div>
-      <button className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-slate-800" type="button" onClick={() => onNavigate("reports")}>
-        すべての部門を見る
+      <button className="mt-6 inline-flex items-center gap-2 text-sm font-bold text-slate-800" type="button" onClick={() => onNavigate("settings")}>
+        部門設定を開く
         <ArrowRight size={15} />
       </button>
     </PanelCard>
   );
+}
+
+function buildDepartmentProgress(departments: string[], tasks: TaskSummary[]): DepartmentProgressItem[] {
+  const normalizedDepartments = normalizeDepartmentList(departments.length ? departments : DEFAULT_DEPARTMENTS);
+  const progressMap = new Map(normalizedDepartments.map((department) => [department, [] as number[]]));
+
+  tasks.forEach((task) => {
+    const department = resolveDepartmentName(task.projectName, normalizedDepartments);
+    if (!department) return;
+    progressMap.get(department)?.push(clampDashboardProgress(task.progress));
+  });
+
+  return normalizedDepartments.map((department) => {
+    const values = progressMap.get(department) ?? [];
+    const progress = values.length
+      ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length)
+      : 0;
+    return { department, progress, taskCount: values.length };
+  });
+}
+
+function resolveDepartmentName(value: string, departments: string[]) {
+  const normalizedValue = normalizeDepartmentName(value);
+  const departmentByName = new Map(departments.map((department) => [normalizeDepartmentName(department), department]));
+  const exactDepartment = departmentByName.get(normalizedValue);
+  if (exactDepartment) return exactDepartment;
+
+  const aliasGroup = DEPARTMENT_ALIAS_GROUPS.find((group) =>
+    group.some((alias) => normalizeDepartmentName(alias) === normalizedValue),
+  );
+  if (!aliasGroup) return undefined;
+
+  return departments.find((department) =>
+    aliasGroup.some((alias) => normalizeDepartmentName(alias) === normalizeDepartmentName(department)),
+  );
+}
+
+function normalizeDepartmentName(value: string) {
+  return value.replace(/\s+/g, "").toLowerCase();
+}
+
+function clampDashboardProgress(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, value));
 }
 
 export function RecentActivityCard({ onNavigate }: DashboardPageProps) {

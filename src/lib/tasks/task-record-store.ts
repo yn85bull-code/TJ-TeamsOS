@@ -27,7 +27,7 @@ export function saveLocalTaskRecords(records: TaskRecordMap) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
 }
 
-export async function saveTaskRecord(taskId: string, record: TaskRecord) {
+export async function saveTaskRecord(taskId: string, record: TaskRecord, statusOverride?: "completed") {
   saveLocalTaskRecords({ ...loadLocalTaskRecords({}), [taskId]: record });
 
   if (!canUseSupabaseBrowserClient() || !isSupabaseUuid(taskId)) {
@@ -36,15 +36,17 @@ export async function saveTaskRecord(taskId: string, record: TaskRecord) {
 
   const supabase = createSupabaseBrowserClient();
   const taskTable = supabase.from("tasks") as ReturnType<typeof supabase.from> & {
-    update: (payload: { progress: number; body: string; status: string }) => {
+    update: (payload: { progress: number; body: string; status: string; completed_at?: string | null }) => {
       eq: (column: string, value: string) => Promise<{ error: Error | null }>;
     };
   };
+  const status = statusOverride ?? (record.progress >= 95 ? "waiting_approval" : record.progress > 0 ? "in_progress" : "not_started");
   const { error } = await taskTable
     .update({
       progress: record.progress,
-      body: record.todoMemo,
-      status: record.progress >= 95 ? "waiting_approval" : record.progress > 0 ? "in_progress" : "not_started",
+      body: record.nextActionMemo ?? record.todoMemo,
+      status,
+      completed_at: status === "completed" ? new Date().toISOString() : null,
     })
     .eq("id", taskId);
 

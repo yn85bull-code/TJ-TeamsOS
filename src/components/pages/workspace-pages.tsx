@@ -5,9 +5,11 @@ import { can } from "@/lib/domain/permissions";
 import { normalizePriority, sortByPriorityAndDueDate } from "@/lib/domain/priority";
 import { departmentProgress, kanbanColumns, myTasks, pageDemo, TaskPriority, TaskStatus, TaskSummary } from "@/lib/dashboard-demo-data";
 import { loadLocalTaskRecords, saveLocalTaskRecords, saveTaskRecord } from "@/lib/tasks/task-record-store";
+import { DEFAULT_DEPARTMENTS, normalizeDepartmentList } from "@/lib/workspace/department-store";
+import { OPERATIONAL_ROLE_OPTIONS, TeamProfileEntry, demoUsersToProfiles, getRoleLabel, inviteTeamUser, loadTeamProfilesFromSupabase, updateProfileRoleInSupabase } from "@/lib/workspace/profile-store";
 import { AppRole } from "@/types/database";
-import { Bot, ClipboardList, Inbox, ListChecks, Search, ShieldCheck, Users } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { Bot, Building2, ClipboardList, Inbox, ListChecks, Search, ShieldCheck, Trash2, Users } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type NavigateHandler = {
   onNavigate?: (key: string) => void;
@@ -21,12 +23,15 @@ type NavigateHandler = {
   currentUserName?: string;
   currentUserId?: string;
   appRole?: AppRole;
+  departmentOptions?: string[];
 };
 
 export type ActivityLogEntry = {
+  id?: string;
   actor: string;
   action: string;
   target: string;
+  detail?: string;
   time: string;
   targetId?: string;
   targetType?: string;
@@ -112,6 +117,7 @@ export type CreatedIssueEntry = {
   category1: string;
   category2: string;
   asIs: string;
+  toBe?: string;
   supabaseId?: string;
   createdById?: string;
   createdByName?: string;
@@ -124,11 +130,15 @@ export type TaskUpdate = {
   at: string;
   memo: string;
   progress: number;
+  achievementMemo?: string;
+  nextActionMemo?: string;
 };
 
 export type TaskRecord = {
   progress: number;
   todoMemo: string;
+  achievementMemo?: string;
+  nextActionMemo?: string;
   updates: TaskUpdate[];
   approvalToBe?: string;
   approvalRequestedAt?: string;
@@ -144,6 +154,26 @@ type ApprovalAction = {
   mode: "review" | "approve" | "sendback";
 } | null;
 
+function useAutoScrollPanel(trigger: unknown) {
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!trigger || typeof window === "undefined") return;
+
+    const timeoutId = window.setTimeout(() => {
+      const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      ref.current?.scrollIntoView({
+        behavior: prefersReducedMotion ? "auto" : "smooth",
+        block: "start",
+      });
+    }, 50);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [trigger]);
+
+  return ref;
+}
+
 type ApprovalsPageProps = NavigateHandler & {
   approvalRequests?: ApprovalRequestEntry[];
   resolvedApprovalIds?: string[];
@@ -154,13 +184,14 @@ type ApprovalsPageProps = NavigateHandler & {
   onRecordApproval?: (entry: ApprovalHistoryEntry) => void;
 };
 
-export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, onDeleteIssue, onRestoreIssue, createdIssues = [], currentUserName = "山田 太郎", currentUserId, appRole = "viewer" }: NavigateHandler) {
+export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, onDeleteIssue, onRestoreIssue, createdIssues = [], currentUserName = "山田 太郎", currentUserId, appRole = "member", departmentOptions = DEFAULT_DEPARTMENTS }: NavigateHandler) {
   const [actionMessage, setActionMessage] = useState("課題を選んで、詳細確認・タスク化・削除を行えます。");
   const [deletedIssueIds, setDeletedIssueIds] = useState<string[]>([]);
   const [detailIssueId, setDetailIssueId] = useState<string | null>(null);
   const [editIssueId, setEditIssueId] = useState<string | null>(null);
   const [taskizeIssueId, setTaskizeIssueId] = useState<string | null>(null);
   const [deleteIssueId, setDeleteIssueId] = useState<string | null>(null);
+  const [panelScrollToken, setPanelScrollToken] = useState(0);
   const [responsiblePerson, setResponsiblePerson] = useState("山田 太郎");
   const [assigneePerson, setAssigneePerson] = useState("未選択");
   const flowSteps = ["課題登録", "タスク振り分け", "担当者が実行", "完了報告", "承認後に完了"];
@@ -175,16 +206,42 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
   const memberOptions = ["未選択", "山田 太郎", "山田 花子", "佐藤 一郎", "鈴木 太郎", "田中 美咲", "高橋 健"];
   const canEditIssues = can(appRole, "issues", "update");
   const canDeleteIssues = can(appRole, "issues", "delete");
+  const detailPanelRef = useAutoScrollPanel(detailIssueId ? `${detailIssueId}-${panelScrollToken}` : null);
+  const editPanelRef = useAutoScrollPanel(editIssueId ? `${editIssueId}-${panelScrollToken}` : null);
+  const deletePanelRef = useAutoScrollPanel(deleteIssueId ? `${deleteIssueId}-${panelScrollToken}` : null);
+  const taskizePanelRef = useAutoScrollPanel(taskizeIssueId ? `${taskizeIssueId}-${panelScrollToken}` : null);
+
+  const requestPanelScroll = () => {
+    setPanelScrollToken((token) => token + 1);
+  };
+
+  const openDetail = (issueId: string) => {
+    setDetailIssueId(issueId);
+    setEditIssueId(null);
+    setTaskizeIssueId(null);
+    setDeleteIssueId(null);
+    setActionMessage(`${issueId} の詳細を表示しています。下の登録内容を確認してください。`);
+    requestPanelScroll();
+  };
+
+  const openEdit = (issueId: string) => {
+    setEditIssueId(issueId);
+    setDetailIssueId(null);
+    setTaskizeIssueId(null);
+    setDeleteIssueId(null);
+    setActionMessage(`${issueId} の編集画面を表示しています。下の入力欄から変更してください。`);
+    requestPanelScroll();
+  };
 
   const openTaskize = (issueId: string) => {
-    const issue = allIssues.find((item) => item.id === issueId);
     setTaskizeIssueId(issueId);
-    setResponsiblePerson(issue?.owner && issue.owner !== "未設定" ? issue.owner : "山田 太郎");
+    setResponsiblePerson(memberOptions.includes(currentUserName) ? currentUserName : "山田 太郎");
     setAssigneePerson("未選択");
     setDetailIssueId(null);
     setEditIssueId(null);
     setDeleteIssueId(null);
     setActionMessage(`${issueId} のタスク化準備中です。担当責任者と担当者を選択してください。`);
+    requestPanelScroll();
   };
 
   const confirmTaskize = () => {
@@ -227,6 +284,7 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
     setEditIssueId(null);
     setTaskizeIssueId(null);
     setActionMessage(`${issueId} はまだ削除されていません。下の確認アナウンスを読んで、必要な場合だけ削除を確定してください。`);
+    requestPanelScroll();
   };
 
   const confirmDeleteIssue = () => {
@@ -288,17 +346,17 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
         </div>
 
         <div className="mt-5 overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left text-sm">
+          <table className="w-full min-w-[1120px] text-left text-sm">
             <thead className="border-y border-slate-200 bg-slate-50 text-xs text-slate-500">
               <tr>
                 <th className="p-3">ID</th>
                 <th className="p-3">課題</th>
                 <th className="p-3">部門</th>
-                <th className="p-3">担当</th>
+                <th className="p-3">登録者</th>
                 <th className="p-3">優先度</th>
                 <th className="p-3">Status</th>
                 <th className="p-3">期限</th>
-                <th className="p-3">次の操作</th>
+                <th className="w-[300px] whitespace-nowrap p-3">次の操作</th>
               </tr>
             </thead>
             <tbody>
@@ -314,30 +372,25 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
                     <td className="p-3"><IssuePriorityBadge priority={issue.priority} /></td>
                     <td className="p-3"><IssueStatusBadge status={issue.status} /></td>
                     <td className="p-3 font-bold text-[#D6001C]">{issue.due}</td>
-                    <td className="p-3">
-                      <div className="flex gap-2">
-                        <button className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C]" type="button" onClick={() => setDetailIssueId(issue.id)}>
+                    <td className="min-w-[300px] p-3">
+                      <div className="flex flex-nowrap gap-2 whitespace-nowrap">
+                        <button className="inline-flex h-10 min-w-[56px] items-center justify-center whitespace-nowrap rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C]" type="button" onClick={() => openDetail(issue.id)}>
                           詳細
                         </button>
                         {createdIssue ? (
                           <button
-                            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:text-slate-300"
+                            className="inline-flex h-10 min-w-[56px] items-center justify-center whitespace-nowrap rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:text-slate-300"
                             type="button"
                             disabled={!canEditThisIssue}
-                            onClick={() => {
-                              setEditIssueId(createdIssue.id);
-                              setDetailIssueId(null);
-                              setTaskizeIssueId(null);
-                              setDeleteIssueId(null);
-                            }}
+                            onClick={() => openEdit(createdIssue.id)}
                           >
                             編集
                           </button>
                         ) : null}
-                        <button className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:text-slate-300" type="button" disabled={!canEditIssues} onClick={() => openTaskize(issue.id)}>
+                        <button className="inline-flex h-10 min-w-[80px] items-center justify-center whitespace-nowrap rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:text-slate-300" type="button" disabled={!canEditIssues} onClick={() => openTaskize(issue.id)}>
                           タスク化
                         </button>
-                        <button className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-950 disabled:cursor-not-allowed disabled:bg-slate-300" type="button" disabled={!canDeleteIssues} onClick={() => openDeleteConfirm(issue.id)}>
+                        <button className="inline-flex h-10 min-w-[56px] items-center justify-center whitespace-nowrap rounded-lg bg-slate-800 px-3 text-xs font-bold text-white hover:bg-slate-950 disabled:cursor-not-allowed disabled:bg-slate-300" type="button" disabled={!canDeleteIssues} onClick={() => openDeleteConfirm(issue.id)}>
                           削除
                         </button>
                       </div>
@@ -396,71 +449,74 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
       ) : null}
 
       {detailIssue ? (
-        <PanelCard className="p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-bold text-[#D6001C]">登録内容</p>
-              <h3 className="mt-1 font-bold">{detailIssue.title}</h3>
-              <p className="mt-2 text-sm text-slate-500">{detailIssue.id} / {detailIssue.department} / 期限 {detailIssue.due} / 登録日時 {detailIssue.createdAt}</p>
+        <div ref={detailPanelRef} className="scroll-mt-24">
+          <PanelCard className="p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-[#D6001C]">登録内容</p>
+                <h3 className="mt-1 font-bold">{detailIssue.title}</h3>
+                  <p className="mt-2 text-sm text-slate-500">{detailIssue.id} / {detailIssue.department} / 期限 {detailIssue.due} / 登録日時 {detailIssue.createdAt}</p>
+              </div>
+              <button className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600" type="button" onClick={() => setDetailIssueId(null)}>閉じる</button>
             </div>
-            <button className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600" type="button" onClick={() => setDetailIssueId(null)}>閉じる</button>
-          </div>
-          <div className="mt-5 grid gap-3 md:grid-cols-2">
-            <DetailBox label="課題分類大区分" value={getIssueCategory1(detailIssue)} />
-            <DetailBox label="課題分類小区分" value={getIssueCategory2(detailIssue)} />
-            <DetailBox label="登録日時 / 発生日" value={detailIssue.createdAt} />
-            <DetailBox label="As-Is" value={getIssueAsIsValue(detailIssue)} />
-            <DetailBox label="To-Be" value={getIssueToBe(detailIssue.id)} />
-          </div>
-        </PanelCard>
+            <div className="mt-5 grid gap-3 md:grid-cols-2">
+              <DetailBox label="課題分類大区分" value={getIssueCategory1(detailIssue)} />
+              <DetailBox label="課題分類小区分" value={getIssueCategory2(detailIssue)} />
+              <DetailBox label="登録者" value={detailIssue.owner} />
+              <DetailBox label="登録日時 / 発生日" value={detailIssue.createdAt} />
+              <DetailBox label="As-Is" value={getIssueAsIsValue(detailIssue)} />
+              <DetailBox label="To-Be" value={getIssueToBe(detailIssue)} />
+            </div>
+          </PanelCard>
+        </div>
       ) : null}
 
       {editIssue ? (
-        <IssueEditPanel
-          issue={editIssue}
-          onCancel={() => setEditIssueId(null)}
-          onSave={(issue) => {
-            onUpdateIssue?.(issue);
-            setEditIssueId(null);
-            setActionMessage(`${issue.id} を更新しました。更新日時: ${issue.updatedAt}`);
-            onAddLog?.({
-              actor: currentUserName,
-              action: "課題を編集",
-              target: issue.title,
-              time: issue.updatedAt ?? formatDateTime(new Date()),
-            });
-          }}
-        />
+        <div ref={editPanelRef} className="scroll-mt-24">
+          <IssueEditPanel
+            issue={editIssue}
+            departmentOptions={departmentOptions}
+            onCancel={() => setEditIssueId(null)}
+            onSave={(issue) => {
+              onUpdateIssue?.(issue);
+              setEditIssueId(null);
+              setActionMessage(`${issue.id} を更新しました。更新日時: ${issue.updatedAt}`);
+            }}
+          />
+        </div>
       ) : null}
 
       {pendingDeleteIssue ? (
-        <PanelCard className="border-red-200 bg-red-50 p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-xs font-bold text-[#D6001C]">削除前の確認アナウンス</p>
-              <h3 className="mt-1 font-bold text-slate-950">{pendingDeleteIssue.title}</h3>
-              <p className="mt-2 text-sm leading-6 text-slate-700">
-                この操作を確定すると、課題一覧から非表示になります。間違って押した場合はキャンセルしてください。削除を確定した場合も、操作履歴はアクティビティログに残ります。
-              </p>
-              <p className="mt-2 text-xs font-bold text-slate-500">対象ID: {pendingDeleteIssue.id} / 登録日時: {pendingDeleteIssue.createdAt}</p>
+        <div ref={deletePanelRef} className="scroll-mt-24">
+          <PanelCard className="border-red-200 bg-red-50 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-[#D6001C]">削除前の確認アナウンス</p>
+                <h3 className="mt-1 font-bold text-slate-950">{pendingDeleteIssue.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-700">
+                  この操作を確定すると、課題一覧から非表示になります。間違って押した場合はキャンセルしてください。削除を確定した場合も、操作履歴はアクティビティログに残ります。
+                </p>
+                <p className="mt-2 text-xs font-bold text-slate-500">対象ID: {pendingDeleteIssue.id} / 登録日時: {pendingDeleteIssue.createdAt}</p>
+              </div>
+              <button className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600" type="button" onClick={() => setDeleteIssueId(null)}>
+                閉じる
+              </button>
             </div>
-            <button className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600" type="button" onClick={() => setDeleteIssueId(null)}>
-              閉じる
-            </button>
-          </div>
-          <div className="mt-5 flex flex-wrap gap-2">
-            <button className="h-10 rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white hover:bg-red-700" type="button" onClick={confirmDeleteIssue}>
-              削除を確定
-            </button>
-            <button className="h-10 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700" type="button" onClick={() => setDeleteIssueId(null)}>
-              キャンセル
-            </button>
-          </div>
-        </PanelCard>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button className="h-10 rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white hover:bg-red-700" type="button" onClick={confirmDeleteIssue}>
+                削除を確定
+              </button>
+              <button className="h-10 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700" type="button" onClick={() => setDeleteIssueId(null)}>
+                キャンセル
+              </button>
+            </div>
+          </PanelCard>
+        </div>
       ) : null}
 
       {taskizeIssue ? (
-        <PanelCard className="border-[#D6001C]/30 p-5">
+        <div ref={taskizePanelRef} className="scroll-mt-24">
+          <PanelCard className="border-[#D6001C]/30 p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-xs font-bold text-[#D6001C]">タスク化</p>
@@ -488,7 +544,8 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
             <button className="h-10 rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white" type="button" onClick={confirmTaskize}>担当を確定してタスク化</button>
             <button className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-bold text-slate-700" type="button" onClick={() => setTaskizeIssueId(null)}>キャンセル</button>
           </div>
-        </PanelCard>
+          </PanelCard>
+        </div>
       ) : null}
     </PageFrame>
   );
@@ -505,10 +562,12 @@ function DetailBox({ label, value }: { label: string; value: string }) {
 
 function IssueEditPanel({
   issue,
+  departmentOptions = DEFAULT_DEPARTMENTS,
   onCancel,
   onSave,
 }: {
   issue: CreatedIssueEntry;
+  departmentOptions?: string[];
   onCancel: () => void;
   onSave: (issue: CreatedIssueEntry) => void;
 }) {
@@ -521,7 +580,12 @@ function IssueEditPanel({
   const [category1, setCategory1] = useState(issue.category1);
   const [category2, setCategory2] = useState(issue.category2);
   const [asIs, setAsIs] = useState(issue.asIs);
-  const canSave = Boolean(title.trim() && department.trim() && owner.trim() && due.trim() && asIs.trim());
+  const [toBe, setToBe] = useState(issue.toBe ?? "");
+  const departments = useMemo(
+    () => normalizeDepartmentList([...departmentOptions, issue.department]),
+    [departmentOptions, issue.department],
+  );
+  const canSave = Boolean(title.trim() && department.trim() && owner.trim() && due.trim() && asIs.trim() && toBe.trim());
 
   return (
     <PanelCard className="border-[#D6001C]/30 p-5">
@@ -543,10 +607,16 @@ function IssueEditPanel({
         </label>
         <label className="grid gap-2 text-sm font-bold text-slate-700">
           部門
-          <input className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-[#D6001C]" value={department} onChange={(event) => setDepartment(event.target.value)} />
+          <select className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-[#D6001C]" value={department} onChange={(event) => setDepartment(event.target.value)}>
+            {departments.map((item) => (
+              <option key={item} value={item}>
+                {item}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="grid gap-2 text-sm font-bold text-slate-700">
-          担当者
+          登録者
           <input className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-[#D6001C]" value={owner} onChange={(event) => setOwner(event.target.value)} />
         </label>
         <label className="grid gap-2 text-sm font-bold text-slate-700">
@@ -589,6 +659,10 @@ function IssueEditPanel({
           As-Is
           <textarea className="min-h-28 rounded-lg border border-slate-200 p-3 text-sm font-normal outline-none focus:border-[#D6001C]" value={asIs} onChange={(event) => setAsIs(event.target.value)} />
         </label>
+        <label className="grid gap-2 text-sm font-bold text-slate-700 lg:col-span-2">
+          To-Be
+          <textarea className="min-h-28 rounded-lg border border-slate-200 p-3 text-sm font-normal outline-none focus:border-[#D6001C]" value={toBe} onChange={(event) => setToBe(event.target.value)} />
+        </label>
       </div>
 
       <div className="mt-5 flex flex-wrap gap-2">
@@ -608,6 +682,7 @@ function IssueEditPanel({
               category1,
               category2,
               asIs: asIs.trim(),
+              toBe: toBe.trim(),
               updatedAt: formatDateTime(new Date()),
             });
           }}
@@ -646,6 +721,12 @@ function canEditCreatedTask(task: CreatedTaskEntry, currentUserName: string, app
   return canEditCreatedRecord(task, currentUserName, appRole, "tasks", currentUserId);
 }
 
+function isMyCreatedTask(task: CreatedTaskEntry, currentUserName: string, currentUserId?: string) {
+  if (task.createdById && currentUserId && task.createdById === currentUserId) return true;
+  return [task.assigneeName, task.assigneePerson, task.responsiblePerson, task.createdByName]
+    .some((name) => isSamePersonName(name, currentUserName));
+}
+
 function canEditCreatedRecord(
   record: { createdById?: string; createdByName?: string },
   currentUserName: string,
@@ -657,6 +738,16 @@ function canEditCreatedRecord(
   if (can(appRole, resource, "manage")) return true;
   if (record.createdById && currentUserId) return record.createdById === currentUserId;
   return !record.createdByName || record.createdByName === currentUserName;
+}
+
+function isSamePersonName(left: string | undefined, right: string | undefined) {
+  const normalizedLeft = normalizePersonName(left);
+  const normalizedRight = normalizePersonName(right);
+  return Boolean(normalizedLeft && normalizedRight && (normalizedLeft === normalizedRight || normalizedLeft.includes(normalizedRight) || normalizedRight.includes(normalizedLeft)));
+}
+
+function normalizePersonName(value: string | undefined) {
+  return (value ?? "").toLowerCase().replace(/\s+/g, "");
 }
 
 function getIssueCategory1(issue: IssueListEntry) {
@@ -676,10 +767,13 @@ function getIssueAsIsValue(issue: IssueListEntry) {
   return getIssueAsIs(issue.id);
 }
 
-function getIssueToBe(issueId: string) {
-  if (issueId === "ISS-001") return "MVVと判断基準が共有され、部門をまたいでも同じ基準で判断できる状態。";
-  if (issueId === "ISS-002") return "研修ルールが標準化され、新人・既存メンバーが同じ手順で対応できる状態。";
-  return "端末利用とデータ持ち出しルールが明確になり、監査可能な状態。";
+function getIssueToBe(issue: IssueListEntry) {
+  if ("toBe" in issue && typeof issue.toBe === "string") return issue.toBe || "未入力";
+  if ("supabaseId" in issue || "asIs" in issue) return "未入力";
+  if (issue.id === "ISS-001") return "MVVと判断基準が共有され、部門をまたいでも同じ基準で判断できる状態。";
+  if (issue.id === "ISS-002") return "研修ルールが標準化され、新人・既存メンバーが同じ手順で対応できる状態。";
+  if (issue.id === "ISS-003") return "端末利用とデータ持ち出しルールが明確になり、監査可能な状態。";
+  return "未入力";
 }
 
 function IssuePriorityBadge({ priority }: { priority: string }) {
@@ -726,7 +820,7 @@ const sendbackTaskSummaries: TaskSummary[] = [
 ];
 
 export function TasksPage({
-  appRole = "viewer",
+  appRole = "member",
   requesterName = "山田 太郎",
   currentUserName = requesterName,
   currentUserId,
@@ -758,22 +852,42 @@ export function TasksPage({
   const deletedCreatedTasks = useMemo(() => createdTasks.filter((task) => task.deletedAt), [createdTasks]);
   const allSendbackTasks = useMemo(() => [...sendbackTasks, ...sendbackTaskSummaries], [sendbackTasks]);
   const allTaskSummaries = useMemo(() => [...myTasks, ...activeCreatedTasks, ...teamTaskSummaries, ...allSendbackTasks], [activeCreatedTasks, allSendbackTasks]);
+  const myCreatedTasks = useMemo(
+    () => activeCreatedTasks.filter((task) => isMyCreatedTask(task, currentUserName, currentUserId)),
+    [activeCreatedTasks, currentUserName, currentUserId],
+  );
+  const myTaskSummaries = useMemo(() => [...myTasks, ...myCreatedTasks], [myCreatedTasks]);
   const initialRecords = useMemo(() => buildInitialTaskRecords(allTaskSummaries), [allTaskSummaries]);
   const [taskRecords, setTaskRecords] = useState<Record<string, TaskRecord>>(initialRecords);
+  const openTaskSummaries = useMemo(
+    () => allTaskSummaries.filter((task) => !isCompletedTaskForList(task, taskRecords)),
+    [allTaskSummaries, taskRecords],
+  );
+  const openMyTaskSummaries = useMemo(
+    () => myTaskSummaries.filter((task) => !isCompletedTaskForList(task, taskRecords)),
+    [myTaskSummaries, taskRecords],
+  );
+  const approvalTaskSummaries = useMemo(
+    () => openTaskSummaries.filter((task) => isApprovalTaskForList(task, taskRecords)),
+    [openTaskSummaries, taskRecords],
+  );
   const [saveMessage, setSaveMessage] = useState("進捗報告と承認申請は、このブラウザに保存されます。Supabase接続後はDB保存に切り替わります。");
   const [activeAction, setActiveAction] = useState<TaskAction>(null);
   const [editTaskId, setEditTaskId] = useState<string | null>(null);
+  const [deleteTaskId, setDeleteTaskId] = useState<string | null>(null);
+  const [taskPanelScrollToken, setTaskPanelScrollToken] = useState(0);
   const [taskView, setTaskView] = useState<"mine" | "team" | "approval" | "sendback">("mine");
-  const activeTask = activeAction ? allTaskSummaries.find((task) => task.id === activeAction.taskId) : undefined;
-  const activeRecord = activeTask ? taskRecords[activeTask.id] : undefined;
+  const activeTask = activeAction ? openTaskSummaries.find((task) => task.id === activeAction.taskId) : undefined;
+  const activeRecord = activeTask ? getTaskRecord(taskRecords, activeTask) : undefined;
   const editTask = editTaskId ? activeCreatedTasks.find((task) => task.id === editTaskId) : undefined;
+  const pendingDeleteTask = deleteTaskId ? activeCreatedTasks.find((task) => task.id === deleteTaskId) : undefined;
   const visibleTasks = sortTasksByPriority(
     taskView === "mine"
-      ? myTasks
+      ? openMyTaskSummaries
       : taskView === "team"
-        ? allTaskSummaries
+        ? openTaskSummaries
         : taskView === "approval"
-          ? allTaskSummaries.filter((task) => task.status === "approval_pending" || (taskRecords[task.id]?.approvalRequestedAt))
+          ? approvalTaskSummaries
           : allSendbackTasks,
   );
   const sendbackTaskDetails = useMemo(
@@ -785,14 +899,17 @@ export function TasksPage({
     [activeCreatedTasks],
   );
   const taskTabs = [
-    { key: "mine", label: "自分のタスク", count: myTasks.length },
-    { key: "team", label: "チームタスク", count: allTaskSummaries.length },
-    { key: "approval", label: "承認待ちタスク", count: allTaskSummaries.filter((task) => task.status === "approval_pending" || taskRecords[task.id]?.approvalRequestedAt).length },
+    { key: "mine", label: "自分のタスク", count: openMyTaskSummaries.length },
+    { key: "team", label: "チームタスク", count: openTaskSummaries.length },
+    { key: "approval", label: "承認待ちタスク", count: approvalTaskSummaries.length },
     { key: "sendback", label: "差し戻しタスク", count: allSendbackTasks.length },
   ] as const;
   const canUpdateTasks = can(appRole, "tasks", "update");
   const canDeleteTasks = can(appRole, "tasks", "delete");
   const canCreateApprovals = can(appRole, "approvals", "create");
+  const taskActionPanelRef = useAutoScrollPanel(activeAction ? `${activeAction.taskId}-${activeAction.mode}-${taskPanelScrollToken}` : null);
+  const taskEditPanelRef = useAutoScrollPanel(editTaskId ? `${editTaskId}-${taskPanelScrollToken}` : null);
+  const taskDeletePanelRef = useAutoScrollPanel(deleteTaskId ? `${deleteTaskId}-${taskPanelScrollToken}` : null);
 
   useEffect(() => {
     setTaskRecords(loadLocalTaskRecords(initialRecords));
@@ -802,20 +919,64 @@ export function TasksPage({
     if (preferredView) setTaskView(preferredView);
   }, [preferredView]);
 
-  const openAction = (taskId: string, mode: "progress" | "approval") => {
-    setActiveAction({ taskId, mode });
-    setEditTaskId(null);
+  const requestTaskPanelScroll = () => {
+    setTaskPanelScrollToken((token) => token + 1);
   };
 
-  const saveProgress = (taskId: string, memo: string, progress: number) => {
+  const openAction = (taskId: string, mode: "progress" | "approval") => {
+    if (mode === "approval") {
+      const task = allTaskSummaries.find((item) => item.id === taskId);
+      const record = task ? getTaskRecord(taskRecords, task) : taskRecords[taskId];
+      if (!record || record.progress < 100) {
+        setSaveMessage("承認申請は進捗100%になってから送信できます。先に進捗報告で100%にしてください。");
+        return;
+      }
+    }
+    setActiveAction({ taskId, mode });
+    setEditTaskId(null);
+    setDeleteTaskId(null);
+    requestTaskPanelScroll();
+  };
+
+  const openEditTask = (taskId: string) => {
+    setEditTaskId(taskId);
+    setActiveAction(null);
+    setDeleteTaskId(null);
+    setSaveMessage(`${taskId} の編集画面を表示しています。下の入力欄から変更してください。`);
+    requestTaskPanelScroll();
+  };
+
+  const openDeleteTask = (taskId: string) => {
+    setDeleteTaskId(taskId);
+    setEditTaskId(null);
+    setActiveAction(null);
+    setSaveMessage(`${taskId} はまだ削除されていません。下の確認アナウンスを読んで、必要な場合だけ削除を確定してください。`);
+    requestTaskPanelScroll();
+  };
+
+  const saveProgress = (taskId: string, achievementMemo: string, nextActionMemo: string, progress: number) => {
     const timestamp = formatDateTime(new Date());
+    const task = allTaskSummaries.find((item) => item.id === taskId);
     const persistenceTaskId = createdTaskDetails[taskId]?.supabaseId ?? taskId;
     setTaskRecords((records) => {
+      const currentRecord = task ? getTaskRecord(records, task) : records[taskId];
+      if (!currentRecord) return records;
       const nextRecord = {
-        ...records[taskId],
+        ...currentRecord,
         progress,
-        todoMemo: memo,
-        updates: [{ at: timestamp, memo, progress }, ...records[taskId].updates],
+        todoMemo: nextActionMemo,
+        achievementMemo,
+        nextActionMemo,
+        updates: [
+          {
+            at: timestamp,
+            memo: buildProgressMemo(achievementMemo, nextActionMemo),
+            achievementMemo,
+            nextActionMemo,
+            progress,
+          },
+          ...currentRecord.updates,
+        ],
       };
       const nextRecords = { ...records, [taskId]: nextRecord };
       saveLocalTaskRecords(nextRecords);
@@ -832,13 +993,24 @@ export function TasksPage({
     const task = allTaskSummaries.find((item) => item.id === taskId);
     const persistenceTaskId = createdTaskDetails[taskId]?.supabaseId ?? taskId;
     const isResubmission = taskView === "sendback" || Boolean(sendbackTaskDetails[taskId]);
+    const currentRecordBeforeRequest = task ? getTaskRecord(taskRecords, task) : taskRecords[taskId];
+    if (!currentRecordBeforeRequest || currentRecordBeforeRequest.progress < 100) {
+      setSaveMessage("承認申請は進捗100%になってから送信できます。先に進捗報告で100%にしてください。");
+      return;
+    }
     setTaskRecords((records) => {
+      const currentRecord = task ? getTaskRecord(records, task) : records[taskId];
+      if (!currentRecord) return records;
+      if (currentRecord.progress < 100) {
+        setSaveMessage("承認申請は進捗100%になってから送信できます。先に進捗報告で100%にしてください。");
+        return records;
+      }
       const nextRecord = {
-        ...records[taskId],
-        progress: Math.max(records[taskId].progress, 95),
+        ...currentRecord,
+        progress: currentRecord.progress,
         approvalToBe: toBe,
         approvalRequestedAt: timestamp,
-        updates: [{ at: timestamp, memo: `承認申請: To-Be ${toBe}`, progress: Math.max(records[taskId].progress, 95) }, ...records[taskId].updates],
+        updates: [{ at: timestamp, memo: `承認申請: 完了後の状態 ${toBe}`, progress: currentRecord.progress }, ...currentRecord.updates],
       };
       const nextRecords = { ...records, [taskId]: nextRecord };
       saveLocalTaskRecords(nextRecords);
@@ -881,6 +1053,7 @@ export function TasksPage({
     onDeleteTask?.(deletedTask);
     setEditTaskId(null);
     setActiveAction(null);
+    setDeleteTaskId(null);
     setSaveMessage(`${task.title} を削除済みにしました。削除済みタスクから復元できます。`);
   };
 
@@ -911,12 +1084,21 @@ export function TasksPage({
       </PanelCard>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {visibleTasks.map((task) => {
-          const record = taskRecords[task.id];
+          const record = getTaskRecord(taskRecords, task);
           const status = getTaskStatus(record.progress);
           const latestUpdate = record.updates[0];
+          const achievementMemo = getTaskAchievementMemo(record);
+          const nextActionMemo = getTaskNextActionMemo(record);
           const sendbackDetail = sendbackTaskDetails[task.id];
           const createdTaskDetail = createdTaskDetails[task.id];
           const canEditThisTask = createdTaskDetail ? canEditCreatedTask(createdTaskDetail, currentUserName, appRole, currentUserId) : false;
+          const canRequestThisApproval = canCreateApprovals && record.progress >= 100;
+          const taskRegistrant = createdTaskDetail?.createdByName;
+          const taskResponsiblePerson = createdTaskDetail?.responsiblePerson || task.assigneeName;
+          const taskAssigneePerson =
+            createdTaskDetail?.assigneePerson && createdTaskDetail.assigneePerson !== "未選択"
+              ? createdTaskDetail.assigneePerson
+              : task.assigneeName;
 
           return (
             <PanelCard key={task.id} className="p-5">
@@ -926,6 +1108,23 @@ export function TasksPage({
                   <p className="mt-1 text-sm text-slate-500">{task.projectName}</p>
                 </div>
                 <PriorityBadge priority={task.priority} />
+              </div>
+
+              <div className="mt-4 grid gap-2 border-y border-slate-100 py-3 text-xs text-slate-600">
+                {taskRegistrant ? (
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-bold text-slate-500">登録者</span>
+                    <strong className="text-right text-slate-800">{taskRegistrant}</strong>
+                  </div>
+                ) : null}
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-bold text-slate-500">担当責任者</span>
+                  <strong className="text-right text-slate-800">{taskResponsiblePerson}</strong>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-bold text-slate-500">担当者</span>
+                  <strong className="text-right text-slate-800">{taskAssigneePerson}</strong>
+                </div>
               </div>
 
               <div className="mt-5 rounded-lg bg-slate-50 p-4">
@@ -947,9 +1146,15 @@ export function TasksPage({
                   <span className="text-slate-500">期限</span>
                   <strong className="text-[#D6001C]">{task.dueDate}</strong>
                 </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-500">ToDoメモ</p>
-                  <p className="mt-1 rounded-lg border border-slate-100 bg-white p-3 text-sm leading-6 text-slate-700">{record.todoMemo}</p>
+                <div className="grid gap-2">
+                  <div>
+                    <p className="text-xs font-bold text-slate-500">今回の達成内容</p>
+                    <p className="mt-1 rounded-lg border border-slate-100 bg-white p-3 text-sm leading-6 text-slate-700">{achievementMemo || "まだ達成内容は記録されていません。"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-500">次にやること</p>
+                    <p className="mt-1 rounded-lg border border-slate-100 bg-white p-3 text-sm leading-6 text-slate-700">{nextActionMemo || "次の作業内容を整理してください。"}</p>
+                  </div>
                 </div>
               </div>
 
@@ -962,7 +1167,14 @@ export function TasksPage({
                         <strong>{update.progress}%</strong>
                         <span className="text-slate-500">{update.at}</span>
                       </div>
-                      <p className="mt-1 leading-5 text-slate-600">{update.memo}</p>
+                      {update.achievementMemo || update.nextActionMemo ? (
+                        <div className="mt-1 grid gap-1 leading-5 text-slate-600">
+                          {update.achievementMemo ? <p><span className="font-bold text-slate-700">達成内容:</span> {update.achievementMemo}</p> : null}
+                          {update.nextActionMemo ? <p><span className="font-bold text-slate-700">次にやること:</span> {update.nextActionMemo}</p> : null}
+                        </div>
+                      ) : (
+                        <p className="mt-1 leading-5 text-slate-600">{update.memo}</p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -972,7 +1184,7 @@ export function TasksPage({
                 <div className="mt-4 rounded-lg border border-indigo-100 bg-indigo-50 p-3 text-xs text-indigo-800">
                   <strong>承認申請済み</strong>
                   <p className="mt-1">申請日時: {record.approvalRequestedAt}</p>
-                  <p className="mt-1">To-Be: {record.approvalToBe}</p>
+                  <p className="mt-1">完了後の状態: {record.approvalToBe}</p>
                 </div>
               ) : null}
 
@@ -980,7 +1192,6 @@ export function TasksPage({
                 <div className="mt-4 rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-xs text-emerald-800">
                   <strong>{createdTaskDetail.sourceType === "direct" ? "新規タスク登録" : "課題からタスク化"}</strong>
                   <p className="mt-1">{createdTaskDetail.sourceType === "direct" ? "登録" : `元課題: ${createdTaskDetail.sourceIssueId}`} / 発生日: {createdTaskDetail.issueCreatedAt}</p>
-                  <p className="mt-1">担当責任者: {createdTaskDetail.responsiblePerson} / 担当者: {createdTaskDetail.assigneePerson}</p>
                   <p className="mt-1 font-bold">タスク化日時: {createdTaskDetail.taskizedAt}</p>
                 </div>
               ) : null}
@@ -993,47 +1204,77 @@ export function TasksPage({
                 </div>
               ) : null}
 
-              <div className="mt-5 flex gap-2">
+              <div className="mt-5 flex flex-wrap gap-2">
                 {createdTaskDetail ? (
                   <button
-                    className="h-9 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:text-slate-300"
+                    className="inline-flex h-9 min-w-[56px] items-center justify-center whitespace-nowrap rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:text-slate-300"
                     type="button"
                     disabled={!canEditThisTask}
-                    onClick={() => {
-                      setEditTaskId(createdTaskDetail.id);
-                      setActiveAction(null);
-                    }}
+                    onClick={() => openEditTask(createdTaskDetail.id)}
                   >
                     編集
                   </button>
                 ) : null}
-                <button className="h-9 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:text-slate-300" type="button" disabled={!canUpdateTasks} onClick={() => openAction(task.id, "progress")}>
+                <button className="inline-flex h-9 min-w-[96px] items-center justify-center whitespace-nowrap rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:text-slate-300" type="button" disabled={!canUpdateTasks} onClick={() => openAction(task.id, "progress")}>
                   進捗報告
                 </button>
-                <button className="h-9 rounded-lg bg-[#D6001C] px-3 text-xs font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300" type="button" disabled={!canCreateApprovals} onClick={() => openAction(task.id, "approval")}>
+                <button className="inline-flex h-9 min-w-[96px] items-center justify-center whitespace-nowrap rounded-lg bg-[#D6001C] px-3 text-xs font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300" type="button" disabled={!canRequestThisApproval} title={record.progress < 100 ? "進捗100%で承認申請できます" : undefined} onClick={() => openAction(task.id, "approval")}>
                   承認申請
                 </button>
                 {createdTaskDetail ? (
-                  <button className="h-9 rounded-lg bg-slate-800 px-3 text-xs font-bold text-white hover:bg-slate-950 disabled:cursor-not-allowed disabled:bg-slate-300" type="button" disabled={!canDeleteTasks} onClick={() => deleteTask(createdTaskDetail)}>
+                  <button className="inline-flex h-9 min-w-[56px] items-center justify-center whitespace-nowrap rounded-lg bg-slate-800 px-3 text-xs font-bold text-white hover:bg-slate-950 disabled:cursor-not-allowed disabled:bg-slate-300" type="button" disabled={!canDeleteTasks} onClick={() => openDeleteTask(createdTaskDetail.id)}>
                     削除
                   </button>
                 ) : null}
               </div>
+              {record.progress < 100 ? (
+                <p className="mt-2 text-xs font-bold text-slate-500">承認申請は進捗100%になってから送信できます。</p>
+              ) : null}
             </PanelCard>
           );
         })}
       </div>
 
       {editTask ? (
-        <TaskEditPanel
-          task={editTask}
-          onCancel={() => setEditTaskId(null)}
-          onSave={(task) => {
-            onUpdateTask?.(task);
-            setEditTaskId(null);
-            setSaveMessage(`${task.title} を更新しました。更新日時: ${task.updatedAt}`);
-          }}
-        />
+        <div ref={taskEditPanelRef} className="scroll-mt-24">
+          <TaskEditPanel
+            task={editTask}
+            onCancel={() => setEditTaskId(null)}
+            onSave={(task) => {
+              onUpdateTask?.(task);
+              setEditTaskId(null);
+              setSaveMessage(`${task.title} を更新しました。更新日時: ${task.updatedAt}`);
+            }}
+          />
+        </div>
+      ) : null}
+
+      {pendingDeleteTask ? (
+        <div ref={taskDeletePanelRef} className="scroll-mt-24">
+          <PanelCard className="border-red-200 bg-red-50 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-bold text-[#D6001C]">削除前の確認アナウンス</p>
+                <h3 className="mt-1 font-bold text-slate-950">{pendingDeleteTask.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-700">
+                  この操作を確定すると、タスク一覧から非表示になります。間違って押した場合はキャンセルしてください。削除を確定した場合も、削除済みタスクから復元できます。
+                </p>
+                <p className="mt-2 text-xs font-bold text-slate-500">対象ID: {pendingDeleteTask.id} / タスク化日時: {pendingDeleteTask.taskizedAt}</p>
+              </div>
+              <button className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600" type="button" onClick={() => setDeleteTaskId(null)}>
+                閉じる
+              </button>
+            </div>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button className="h-10 rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white hover:bg-red-700" type="button" onClick={() => deleteTask(pendingDeleteTask)}>
+                削除を確定
+              </button>
+              <button className="h-10 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700" type="button" onClick={() => setDeleteTaskId(null)}>
+                キャンセル
+              </button>
+            </div>
+          </PanelCard>
+        </div>
       ) : null}
 
       {deletedCreatedTasks.length > 0 ? (
@@ -1079,17 +1320,21 @@ export function TasksPage({
       ) : null}
 
       {activeTask && activeRecord ? (
-        <TaskActionPanel
-          mode={activeAction?.mode ?? "progress"}
-          taskTitle={activeTask.title}
-          currentProgress={activeRecord.progress}
-          currentMemo={activeRecord.todoMemo}
-          onCancel={() => setActiveAction(null)}
-          onSaveProgress={(memo, progress) => saveProgress(activeTask.id, memo, progress)}
-          onRequestApproval={(toBe, reviewer) => requestApproval(activeTask.id, toBe, reviewer)}
-          approvalReviewerOptions={approvalReviewerOptions}
-          finalApprover={finalApprover}
-        />
+        <div ref={taskActionPanelRef} className="scroll-mt-24">
+          <TaskActionPanel
+            mode={activeAction?.mode ?? "progress"}
+            taskTitle={activeTask.title}
+            currentProgress={activeRecord.progress}
+            currentMemo={activeRecord.todoMemo}
+            currentAchievementMemo={getTaskAchievementMemo(activeRecord)}
+            currentNextActionMemo={getTaskNextActionMemo(activeRecord)}
+            onCancel={() => setActiveAction(null)}
+            onSaveProgress={(achievementMemo, nextActionMemo, progress) => saveProgress(activeTask.id, achievementMemo, nextActionMemo, progress)}
+            onRequestApproval={(toBe, reviewer) => requestApproval(activeTask.id, toBe, reviewer)}
+            approvalReviewerOptions={approvalReviewerOptions}
+            finalApprover={finalApprover}
+          />
+        </div>
       ) : null}
     </PageFrame>
   );
@@ -1107,7 +1352,7 @@ function TaskEditPanel({
   const [title, setTitle] = useState(task.title);
   const [projectName, setProjectName] = useState(task.projectName);
   const [assigneeName, setAssigneeName] = useState(task.assigneeName);
-  const [dueDate, setDueDate] = useState(task.dueDate);
+  const [dueDate, setDueDate] = useState(() => toDateInputValue(task.dueDate));
   const [priority, setPriority] = useState<TaskPriority>(task.priority);
   const canSave = Boolean(title.trim() && projectName.trim() && assigneeName.trim() && dueDate.trim());
 
@@ -1139,7 +1384,7 @@ function TaskEditPanel({
         </label>
         <label className="grid gap-2 text-sm font-bold text-slate-700">
           期限
-          <input className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-[#D6001C]" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
+          <input className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-normal outline-none focus:border-[#D6001C]" type="date" value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
         </label>
         <label className="grid gap-2 text-sm font-bold text-slate-700">
           優先度
@@ -1163,7 +1408,7 @@ function TaskEditPanel({
               projectName: projectName.trim(),
               assigneeName: assigneeName.trim(),
               assigneePerson: assigneeName.trim(),
-              dueDate: dueDate.trim(),
+              dueDate: formatDateInputForDisplay(dueDate),
               priority,
               updatedAt: formatDateTime(new Date()),
             });
@@ -1184,6 +1429,8 @@ function TaskActionPanel({
   taskTitle,
   currentProgress,
   currentMemo,
+  currentAchievementMemo,
+  currentNextActionMemo,
   onCancel,
   onSaveProgress,
   onRequestApproval,
@@ -1194,17 +1441,21 @@ function TaskActionPanel({
   taskTitle: string;
   currentProgress: number;
   currentMemo: string;
+  currentAchievementMemo: string;
+  currentNextActionMemo: string;
   onCancel: () => void;
-  onSaveProgress: (memo: string, progress: number) => void;
+  onSaveProgress: (achievementMemo: string, nextActionMemo: string, progress: number) => void;
   onRequestApproval: (toBe: string, reviewer?: ApprovalReviewerOption) => void;
   approvalReviewerOptions?: ApprovalReviewerOption[];
   finalApprover?: ApprovalReviewerOption;
 }) {
-  const [memo, setMemo] = useState(currentMemo);
+  const [achievementMemo, setAchievementMemo] = useState(currentAchievementMemo);
+  const [nextActionMemo, setNextActionMemo] = useState(currentNextActionMemo || currentMemo);
   const [progress, setProgress] = useState(currentProgress);
   const [toBe, setToBe] = useState("");
   const [reviewerId, setReviewerId] = useState(approvalReviewerOptions[0]?.id ?? "");
   const selectedReviewer = approvalReviewerOptions.find((reviewer) => reviewer.id === reviewerId) ?? approvalReviewerOptions[0];
+  const canRequestApproval = currentProgress >= 100 && Boolean(toBe.trim());
 
   return (
     <PanelCard className="border-[#D6001C]/30 p-5">
@@ -1220,23 +1471,44 @@ function TaskActionPanel({
 
       {mode === "progress" ? (
         <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_220px]">
-          <label className="grid gap-2 text-sm font-bold text-slate-700">
-            ToDoメモ
-            <textarea className="min-h-28 rounded-lg border border-slate-200 p-3 text-sm font-medium text-slate-700 outline-none focus:border-[#D6001C]" value={memo} onChange={(event) => setMemo(event.target.value)} />
-          </label>
+          <div className="grid gap-4">
+            <label className="grid gap-2 text-sm font-bold text-slate-700">
+              今の達成内容
+              <textarea
+                className="min-h-28 rounded-lg border border-slate-200 p-3 text-sm font-medium text-slate-700 outline-none focus:border-[#D6001C]"
+                placeholder="ここまで完了した内容、確認済みのこと、成果物などを入力"
+                value={achievementMemo}
+                onChange={(event) => setAchievementMemo(event.target.value)}
+              />
+            </label>
+            <label className="grid gap-2 text-sm font-bold text-slate-700">
+              次にやること
+              <textarea
+                className="min-h-28 rounded-lg border border-slate-200 p-3 text-sm font-medium text-slate-700 outline-none focus:border-[#D6001C]"
+                placeholder="次の作業、未完了項目、確認待ち、依頼事項などを入力"
+                value={nextActionMemo}
+                onChange={(event) => setNextActionMemo(event.target.value)}
+              />
+            </label>
+          </div>
           <div className="grid gap-3">
             <label className="grid gap-2 text-sm font-bold text-slate-700">
               タスク進捗
               <input className="h-10 rounded-lg border border-slate-200 px-3 text-sm" max={100} min={0} type="number" value={progress} onChange={(event) => setProgress(Number(event.target.value))} />
             </label>
             <ProgressBar value={progress} />
-            <button className="h-10 rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white" type="button" onClick={() => onSaveProgress(memo, clampProgress(progress))}>
+            <button className="h-10 rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white" type="button" onClick={() => onSaveProgress(achievementMemo.trim(), nextActionMemo.trim(), clampProgress(progress))}>
               進捗報告を保存
             </button>
           </div>
         </div>
       ) : (
         <div className="mt-5 grid gap-4">
+          {currentProgress < 100 ? (
+            <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 text-sm font-bold text-orange-800">
+              承認申請は進捗100%になってから送信できます。先に進捗報告で100%にしてください。
+            </div>
+          ) : null}
           <div className="grid gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 md:grid-cols-2">
             <label className="grid gap-2 text-sm font-bold text-slate-700">
               確認承認者
@@ -1256,11 +1528,11 @@ function TaskActionPanel({
             </div>
           </div>
           <label className="grid gap-2 text-sm font-bold text-slate-700">
-            To-Be
-            <textarea className="min-h-32 rounded-lg border border-slate-200 p-3 text-sm font-medium text-slate-700 outline-none focus:border-[#D6001C]" placeholder="完了後にどういう状態になっているべきかを入力" value={toBe} onChange={(event) => setToBe(event.target.value)} />
+            完了後の状態
+            <textarea className="min-h-32 rounded-lg border border-slate-200 p-3 text-sm font-medium text-slate-700 outline-none focus:border-[#D6001C]" placeholder="完了後にどのような状態になったかを入力" value={toBe} onChange={(event) => setToBe(event.target.value)} />
           </label>
           <div className="flex flex-wrap gap-2">
-            <button className="h-10 rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white" type="button" onClick={() => onRequestApproval(toBe || "完了条件を満たし、上長確認待ちの状態", selectedReviewer)}>
+            <button className="h-10 rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300" type="button" disabled={!canRequestApproval} onClick={() => onRequestApproval(toBe.trim(), selectedReviewer)}>
               承認申請を送る
             </button>
             <button className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-bold text-slate-700" type="button" onClick={onCancel}>
@@ -1277,19 +1549,56 @@ function buildInitialTaskRecords(tasks: TaskSummary[] = myTasks) {
   return Object.fromEntries(
     tasks.map((task, index) => [
       task.id,
-      {
-        progress: task.progress,
-        todoMemo: getInitialTodoMemo(index),
-        updates: [
-          {
-            at: getInitialUpdateTime(index),
-            memo: getInitialTodoMemo(index),
-            progress: task.progress,
-          },
-        ],
-      },
+      createInitialTaskRecord(task, index),
     ]),
   ) as Record<string, TaskRecord>;
+}
+
+function getTaskRecord(records: Record<string, TaskRecord>, task: TaskSummary) {
+  return records[task.id] ?? createInitialTaskRecord(task);
+}
+
+function getTaskAchievementMemo(record: TaskRecord) {
+  return record.achievementMemo ?? record.updates[0]?.achievementMemo ?? "";
+}
+
+function getTaskNextActionMemo(record: TaskRecord) {
+  return record.nextActionMemo ?? record.updates[0]?.nextActionMemo ?? record.todoMemo ?? "";
+}
+
+function buildProgressMemo(achievementMemo: string, nextActionMemo: string) {
+  const achievement = achievementMemo.trim();
+  const nextAction = nextActionMemo.trim();
+  if (achievement && nextAction) return `達成内容: ${achievement} / 次にやること: ${nextAction}`;
+  return achievement || nextAction || "進捗内容を更新しました。";
+}
+
+function isCompletedTaskForList(task: TaskSummary, _records: Record<string, TaskRecord>) {
+  return task.status === "done";
+}
+
+function isApprovalTaskForList(task: TaskSummary, records: Record<string, TaskRecord>) {
+  const record = records[task.id];
+  return !isCompletedTaskForList(task, records) && (task.status === "approval_pending" || Boolean(record?.approvalRequestedAt));
+}
+
+function createInitialTaskRecord(task: TaskSummary, index = 0): TaskRecord {
+  const progress = clampProgress(task.progress);
+  const todoMemo = getInitialTodoMemo(index);
+  return {
+    progress,
+    todoMemo,
+    achievementMemo: "",
+    nextActionMemo: todoMemo,
+    updates: [
+      {
+        at: getInitialUpdateTime(index),
+        memo: todoMemo,
+        progress,
+        nextActionMemo: todoMemo,
+      },
+    ],
+  };
 }
 
 function getInitialTodoMemo(index: number) {
@@ -1317,6 +1626,41 @@ function getTaskStatus(progress: number): TaskStatus {
 
 function clampProgress(value: number) {
   return Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
+}
+
+function toDateInputValue(value: string) {
+  const normalized = normalizeDateText(value);
+  const isoDate = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoDate) return normalized;
+
+  const yearSlashDate = normalized.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+  if (yearSlashDate) return `${yearSlashDate[1]}-${padDatePart(yearSlashDate[2])}-${padDatePart(yearSlashDate[3])}`;
+
+  const slashDate = normalized.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (slashDate) return `${new Date().getFullYear()}-${padDatePart(slashDate[1])}-${padDatePart(slashDate[2])}`;
+
+  return "";
+}
+
+function formatDateInputForDisplay(value: string) {
+  const dateInput = toDateInputValue(value);
+  if (!dateInput) return normalizeDateText(value);
+  const [, month, day] = dateInput.split("-");
+  return `${month}/${day}`;
+}
+
+function normalizeDateText(value: string) {
+  return value
+    .normalize("NFKC")
+    .replace(/[年月.-]/g, "/")
+    .replace(/日/g, "")
+    .replace(/\s+/g, "")
+    .replace(/\/+/g, "/")
+    .replace(/\/$/g, "");
+}
+
+function padDatePart(value: string) {
+  return value.padStart(2, "0");
 }
 
 function formatDateTime(date: Date) {
@@ -1368,64 +1712,67 @@ export function ApprovalsPage({
     { key: "pending", label: "承認待ち", count: pendingApprovals.length },
     { key: "approved", label: "承認済み", count: approvalHistory.length },
   ] as const;
-  const canApproveRequests = can(appRole ?? "viewer", "approvals", "approve");
+  const canApproveRequests = can(appRole ?? "member", "approvals", "approve");
+  const approvalActionPanelRef = useAutoScrollPanel(activeAction ? `${activeAction.approvalId}-${activeAction.mode}` : null);
 
   const completeApprovalAction = (comment: string) => {
     if (!activeAction || !activeApproval) return;
 
     if (activeAction.mode === "review") {
-      if (!canReviewApproval(activeApproval, currentUserId)) return;
+      if (!canReviewApproval(activeApproval, currentUserId, appRole ?? "member")) return;
       onReviewApproval?.(activeApproval, comment);
       setResultMessage(`${activeApproval.id} を確認済みにしました。コメント: ${comment}`);
       setActiveAction(null);
       return;
     }
 
-    if (!canFinalizeApproval(activeApproval, currentUserId, appRole ?? "viewer")) return;
+    if (activeAction.mode === "sendback") {
+      if (!canSendBackApproval(activeApproval, currentUserId, appRole ?? "member")) return;
+      onResolveApproval?.(activeApproval, "sendback", comment);
+      setResultMessage(`${activeApproval.id} を差し戻しました。コメント: ${comment}`);
+      if (activeApproval.taskId) {
+        onSendBackTask?.({
+          id: activeApproval.taskId,
+          title: activeApproval.target,
+          projectName: "差し戻し対応",
+          assigneeName: activeApproval.requester,
+          dueDate: activeApproval.dueDate,
+          priority: activeApproval.priority,
+          status: "in_progress",
+          progress: 70,
+          sendbackReason: comment,
+          sentBackAt: formatDateTime(new Date()),
+        });
+      }
+      setActiveAction(null);
+      onNavigate?.("tasks");
+      return;
+    }
+
+    if (!canFinalizeApproval(activeApproval, currentUserId, appRole ?? "member")) return;
     if (!activeApproval.reviewedAt) {
       setResultMessage(`${activeApproval.id} は確認承認者の確認待ちです。確認済み後に最終決裁できます。`);
       setActiveAction(null);
       return;
     }
 
-    onResolveApproval?.(activeApproval, activeAction.mode, comment);
-    if (activeAction.mode === "approve") {
-      onRecordApproval?.({
-        id: activeApproval.id,
-        type: activeApproval.type,
-        target: activeApproval.target,
-        requester: activeApproval.requester,
-        reviewerName: activeApproval.reviewerName,
-        finalApproverName: activeApproval.finalApproverName,
-        approvedBy: currentUserName,
-        approvedAt: formatDateTime(new Date()),
-        comment,
-        issueCreatedAt: getApprovalCreatedAt(activeApproval),
-        supabaseId: activeApproval.supabaseId,
-      });
-      setResultMessage(`${activeApproval.id} を承認しました。コメント: ${comment}`);
-      setApprovalView("approved");
-      setActiveAction(null);
-      return;
-    }
-
-    setResultMessage(`${activeApproval.id} を差し戻しました。コメント: ${comment}`);
-    if (activeApproval.taskId) {
-      onSendBackTask?.({
-        id: activeApproval.taskId,
-        title: activeApproval.target,
-        projectName: "差し戻し対応",
-        assigneeName: activeApproval.requester,
-        dueDate: activeApproval.dueDate,
-        priority: activeApproval.priority,
-        status: "in_progress",
-        progress: 70,
-        sendbackReason: comment,
-        sentBackAt: formatDateTime(new Date()),
-      });
-    }
+    onResolveApproval?.(activeApproval, "approve", comment);
+    onRecordApproval?.({
+      id: activeApproval.id,
+      type: activeApproval.type,
+      target: activeApproval.target,
+      requester: activeApproval.requester,
+      reviewerName: activeApproval.reviewerName,
+      finalApproverName: activeApproval.finalApproverName,
+      approvedBy: currentUserName,
+      approvedAt: formatDateTime(new Date()),
+      comment,
+      issueCreatedAt: getApprovalCreatedAt(activeApproval),
+      supabaseId: activeApproval.supabaseId,
+    });
+    setResultMessage(`${activeApproval.id} を承認しました。コメント: ${comment}`);
+    setApprovalView("approved");
     setActiveAction(null);
-    onNavigate?.("tasks");
   };
 
   return (
@@ -1474,9 +1821,9 @@ export function ApprovalsPage({
               </div>
             </div>
             <div className="mt-4 flex gap-2">
-              <button className="h-9 rounded-lg border border-emerald-200 bg-emerald-50 px-4 text-sm font-bold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-300" type="button" disabled={!canReviewApproval(approval, currentUserId) || Boolean(approval.reviewedAt)} onClick={() => setActiveAction({ approvalId: approval.id, mode: "review" })}>確認済みにする</button>
-              <button className="h-9 rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300" type="button" disabled={!canApproveRequests || !canFinalizeApproval(approval, currentUserId, appRole ?? "viewer")} onClick={() => setActiveAction({ approvalId: approval.id, mode: "approve" })}>最終承認</button>
-              <button className="h-9 rounded-lg border border-slate-200 px-4 text-sm font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:text-slate-300" type="button" disabled={!canApproveRequests || !canFinalizeApproval(approval, currentUserId, appRole ?? "viewer")} onClick={() => setActiveAction({ approvalId: approval.id, mode: "sendback" })}>差し戻し</button>
+              <button className="h-9 rounded-lg border border-emerald-200 bg-emerald-50 px-4 text-sm font-bold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-300" type="button" disabled={!canReviewApproval(approval, currentUserId, appRole ?? "member") || Boolean(approval.reviewedAt)} onClick={() => setActiveAction({ approvalId: approval.id, mode: "review" })}>確認済みにする</button>
+              <button className="h-9 rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300" type="button" disabled={!canApproveRequests || !canFinalizeApproval(approval, currentUserId, appRole ?? "member")} onClick={() => setActiveAction({ approvalId: approval.id, mode: "approve" })}>最終承認</button>
+              <button className="h-9 rounded-lg border border-slate-200 px-4 text-sm font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:text-slate-300" type="button" disabled={!canSendBackApproval(approval, currentUserId, appRole ?? "member")} onClick={() => setActiveAction({ approvalId: approval.id, mode: "sendback" })}>差し戻し</button>
             </div>
           </PanelCard>
         ))}
@@ -1519,25 +1866,36 @@ export function ApprovalsPage({
       ) : null}
 
       {activeApproval && activeAction ? (
-        <ApprovalCommentPanel
-          approvalTarget={activeApproval.target}
-          mode={activeAction.mode}
-          onCancel={() => setActiveAction(null)}
-          onSubmit={completeApprovalAction}
-        />
+        <div ref={approvalActionPanelRef} className="scroll-mt-24">
+          <ApprovalCommentPanel
+            approvalTarget={activeApproval.target}
+            mode={activeAction.mode}
+            onCancel={() => setActiveAction(null)}
+            onSubmit={completeApprovalAction}
+          />
+        </div>
       ) : null}
     </PageFrame>
   );
 }
 
-function canFinalizeApproval(approval: ApprovalRequestEntry, currentUserId?: string, appRole: AppRole = "viewer") {
-  if (appRole !== "owner") return false;
-  if (!approval.reviewedAt) return false;
-  return !approval.finalApproverId || approval.finalApproverId === currentUserId;
+function canFinalizeApproval(approval: ApprovalRequestEntry, currentUserId?: string, appRole: AppRole = "member") {
+  return canMakeFinalApprovalDecision(approval, currentUserId, appRole) && Boolean(approval.reviewedAt);
 }
 
-function canReviewApproval(approval: ApprovalRequestEntry, currentUserId?: string) {
-  return Boolean(currentUserId && approval.reviewerId && approval.reviewerId === currentUserId);
+function canSendBackApproval(approval: ApprovalRequestEntry, currentUserId?: string, appRole: AppRole = "member") {
+  return canReviewApproval(approval, currentUserId, appRole) || canMakeFinalApprovalDecision(approval, currentUserId, appRole);
+}
+
+function canReviewApproval(approval: ApprovalRequestEntry, currentUserId?: string, appRole: AppRole = "member") {
+  if (!currentUserId) return false;
+  if (approval.reviewerId && approval.reviewerId === currentUserId) return true;
+  return appRole === "owner" || appRole === "admin";
+}
+
+function canMakeFinalApprovalDecision(approval: ApprovalRequestEntry, currentUserId?: string, appRole: AppRole = "member") {
+  if (!currentUserId || appRole !== "owner") return false;
+  return !approval.finalApproverId || approval.finalApproverId === currentUserId;
 }
 
 function getApprovalActionLabel(mode: "review" | "approve" | "sendback") {
@@ -1564,14 +1922,18 @@ function ApprovalCommentPanel({
   onSubmit: (comment: string) => void;
 }) {
   const [comment, setComment] = useState("");
-  const label = mode === "approve" ? "承認コメント" : "差し戻しコメント";
-  const buttonLabel = mode === "approve" ? "コメント付きで承認" : "コメント付きで差し戻し";
+  const actionTitle = mode === "review" ? "確認" : mode === "approve" ? "承認" : "差し戻し";
+  const placeholder = mode === "review"
+    ? "確認した内容や補足コメントを入力"
+    : mode === "approve"
+      ? "承認理由や確認した内容を入力"
+      : "戻す理由と修正してほしい内容を入力";
 
   return (
     <PanelCard className="border-[#D6001C]/30 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-bold uppercase text-[#D6001C]">{mode === "approve" ? "承認" : "差し戻し"}</p>
+          <p className="text-xs font-bold uppercase text-[#D6001C]">{actionTitle}</p>
           <h3 className="mt-1 font-bold">{approvalTarget}</h3>
         </div>
         <button className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600" type="button" onClick={onCancel}>
@@ -1583,7 +1945,7 @@ function ApprovalCommentPanel({
         {getApprovalActionLabel(mode)}
         <textarea
           className="min-h-28 rounded-lg border border-slate-200 p-3 text-sm font-medium text-slate-700 outline-none focus:border-[#D6001C]"
-          placeholder={mode === "approve" ? "承認理由や確認した内容を入力" : "戻す理由と修正してほしい内容を入力"}
+          placeholder={placeholder}
           value={comment}
           onChange={(event) => setComment(event.target.value)}
         />
@@ -1603,10 +1965,10 @@ function ApprovalCommentPanel({
 
 const teamMembers = [
   { department: "営業部", position: "本部長", name: "山田 太郎", permission: "Owner" },
-  { department: "営業部", position: "課長", name: "山田 花子", permission: "Approver" },
-  { department: "買取部", position: "主任", name: "佐藤 一郎", permission: "Editor" },
-  { department: "販売部", position: "リーダー", name: "鈴木 太郎", permission: "Editor" },
-  { department: "総務部", position: "担当", name: "田中 美咲", permission: "Viewer" },
+  { department: "営業部", position: "課長", name: "山田 花子", permission: "Manager" },
+  { department: "買取部", position: "主任", name: "佐藤 一郎", permission: "Manager" },
+  { department: "販売部", position: "リーダー", name: "鈴木 太郎", permission: "Admin" },
+  { department: "総務部", position: "担当", name: "田中 美咲", permission: "Member" },
   { department: "システム部", position: "管理者", name: "高橋 健", permission: "Admin" },
 ];
 
@@ -1616,9 +1978,9 @@ function PermissionBadge({ rank }: { rank: string }) {
       ? "bg-red-50 text-red-700 ring-red-200"
       : rank === "Admin"
         ? "bg-indigo-50 text-indigo-700 ring-indigo-200"
-        : rank === "Approver"
+        : rank === "Manager"
           ? "bg-orange-50 text-orange-700 ring-orange-200"
-          : rank === "Editor"
+          : rank === "Member"
             ? "bg-blue-50 text-blue-700 ring-blue-200"
             : "bg-slate-100 text-slate-700 ring-slate-200";
 
@@ -1842,7 +2204,7 @@ function escapeCsvValue(value: string) {
 }
 
 export function ActivityLogsPage({ activityLogs = [] }: { activityLogs?: ActivityLogEntry[] }) {
-  const logs = [...activityLogs, ...pageDemo.logs];
+  const logs: ActivityLogEntry[] = [...activityLogs, ...pageDemo.logs];
   return (
     <PageFrame title="アクティビティログ" lead="誰が、いつ、何を変更したかを監査ログとして確認します。">
       <PanelCard className="p-5">
@@ -1853,10 +2215,15 @@ export function ActivityLogsPage({ activityLogs = [] }: { activityLogs?: Activit
           <strong>日時</strong>
         </div>
         <div className="grid gap-3">
-          {logs.map((log) => (
-            <div key={`${log.actor}-${log.action}-${log.target}-${log.time}`} className="grid gap-2 rounded-lg border border-slate-100 p-4 md:grid-cols-[160px_1fr_180px_150px] md:items-center">
+          {logs.map((log, index) => (
+            <div key={getActivityLogKey(log, index)} className="grid gap-2 rounded-lg border border-slate-100 p-4 md:grid-cols-[160px_1fr_180px_150px] md:items-center">
               <strong>{log.actor}</strong>
-              <span>{log.action}</span>
+              <div>
+                <span className="font-semibold text-slate-900">{log.action}</span>
+                {log.detail ? (
+                  <p className="mt-1 text-xs leading-5 text-slate-500">{log.detail}</p>
+                ) : null}
+              </div>
               <span className="text-slate-500">{log.target}</span>
               <span className="font-mono text-xs font-semibold text-slate-600">{log.time}</span>
             </div>
@@ -1867,23 +2234,45 @@ export function ActivityLogsPage({ activityLogs = [] }: { activityLogs?: Activit
   );
 }
 
-export function SettingsPage() {
+function getActivityLogKey(log: ActivityLogEntry, index: number) {
+  return log.supabaseId ?? log.id ?? `${log.actor}-${log.action}-${log.target}-${log.time}-${index}`;
+}
+
+export function SettingsPage({
+  departments = DEFAULT_DEPARTMENTS,
+  onAddDepartment,
+  onDeleteDepartment,
+  currentUserId,
+  currentUserName = "山田 太郎",
+  currentAuthSource = "demo",
+  appRole = "member",
+}: {
+  departments?: string[];
+  onAddDepartment?: (name: string) => void;
+  onDeleteDepartment?: (name: string) => void;
+  currentUserId?: string;
+  currentUserName?: string;
+  currentAuthSource?: "demo" | "supabase";
+  appRole?: AppRole;
+} = {}) {
+  const canManageSettings = can(appRole, "settings", "manage");
+  const canChangeUserRoles = appRole === "owner";
   const settingDetails = [
     {
       key: "users",
       label: "ユーザー設定",
       icon: Users,
-      status: "デモ表示中",
-      lead: "ログインユーザーの氏名、所属部門、役職、連絡先を管理します。",
-      items: ["氏名・メールアドレス", "所属部門・役職", "ログイン状態", "個人連携アカウント"],
+      status: "操作可能",
+      lead: "ログインユーザーの氏名、所属部門、役職、権限ランクを管理します。",
+      items: ["氏名・メールアドレス", "所属部門・役職", "Owner固定", "権限変更はOwnerのみ"],
     },
     {
       key: "permissions",
       label: "権限設定",
       icon: ShieldCheck,
       status: "操作可能",
-      lead: "権限ランクを追加し、メンバーごとに閲覧・編集・承認範囲を制御します。",
-      items: ["Owner: 全権限", "Admin: 管理者", "Approver: 承認者", "Editor: 編集者", "Viewer: 閲覧者"],
+      lead: "権限ランクを追加し、メンバーごとに閲覧・編集・管理範囲を制御します。",
+      items: ["Owner: 全権限・最終承認", "Admin: 管理者", "Manager: 部門/チーム管理", "Member: 作業担当"],
     },
     {
       key: "notifications",
@@ -1910,6 +2299,14 @@ export function SettingsPage() {
       items: ["メール・LINEの要約", "課題/タスク候補の自動分類", "返信案の作成", "人間承認後のみ登録"],
     },
     {
+      key: "departments",
+      label: "部門設定",
+      icon: Building2,
+      status: "操作可能",
+      lead: "課題登録と部門別進捗率で使う部門マスタを管理します。",
+      items: ["課題登録の部門選択", "部門別進捗率の集計対象", "部門名の追加・削除", "表記ゆれ防止"],
+    },
+    {
       key: "approvalRules",
       label: "承認ルール設定",
       icon: ListChecks,
@@ -1918,18 +2315,123 @@ export function SettingsPage() {
       items: ["Mustタスクは承認必須", "部門長承認", "差し戻し時はタスクへ戻す", "承認コメント必須"],
     },
   ] as const;
-  const [activeSettingKey, setActiveSettingKey] = useState<(typeof settingDetails)[number]["key"]>("permissions");
+  const [activeSettingKey, setActiveSettingKey] = useState<(typeof settingDetails)[number]["key"]>("users");
   const [permissionRanks, setPermissionRanks] = useState([
-    { rank: "Owner", description: "全権限。会社・全データ・権限設定を管理できます。" },
-    { rank: "Admin", description: "管理者。部門横断の設定とメンバー管理ができます。" },
-    { rank: "Approver", description: "承認者。承認申請の承認・差し戻しができます。" },
-    { rank: "Editor", description: "編集者。課題・タスクの登録と進捗更新ができます。" },
-    { rank: "Viewer", description: "閲覧者。閲覧のみ可能です。" },
+    { rank: "Owner", description: "全権限。会社・全データ・権限設定を管理し、最終承認を行えます。" },
+    { rank: "Admin", description: "管理者。部門横断の設定、メンバー管理、運用メンテナンスができます。" },
+    { rank: "Manager", description: "部門/チーム管理。担当部門やチームの課題・タスクを管理できます。" },
+    { rank: "Member", description: "作業担当。課題・タスクの登録と進捗更新ができます。" },
   ]);
   const [newRank, setNewRank] = useState("");
   const [newDescription, setNewDescription] = useState("");
+  const [newDepartment, setNewDepartment] = useState("");
+  const [inviteName, setInviteName] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteDepartment, setInviteDepartment] = useState(DEFAULT_DEPARTMENTS[0]);
+  const [invitePosition, setInvitePosition] = useState("");
+  const [inviteRole, setInviteRole] = useState<AppRole>("member");
+  const [inviteStatus, setInviteStatus] = useState("");
+  const [isInviting, setIsInviting] = useState(false);
+  const [profiles, setProfiles] = useState<TeamProfileEntry[]>(demoUsersToProfiles());
+  const [profileStatus, setProfileStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [profileMessage, setProfileMessage] = useState("");
+  const [savingProfileId, setSavingProfileId] = useState<string | null>(null);
+  const normalizedDepartments = normalizeDepartmentList(departments.length ? departments : DEFAULT_DEPARTMENTS);
   const activeSetting = settingDetails.find((setting) => setting.key === activeSettingKey) ?? settingDetails[1];
   const ActiveIcon = activeSetting.icon;
+
+  useEffect(() => {
+    if (!normalizedDepartments.includes(inviteDepartment)) {
+      setInviteDepartment(normalizedDepartments[0] ?? DEFAULT_DEPARTMENTS[0]);
+    }
+  }, [inviteDepartment, normalizedDepartments]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setProfileStatus("loading");
+    setProfileMessage("");
+    void loadTeamProfilesFromSupabase()
+      .then((result) => {
+        if (cancelled) return;
+        setProfiles(result.profiles.length ? result.profiles : demoUsersToProfiles());
+        setProfileStatus("ready");
+        setProfileMessage(result.source === "supabase" ? "Supabaseのprofilesからユーザー情報を読み込みました。" : "デモユーザー情報を表示しています。");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn("Profile load failed.", error);
+        setProfiles(demoUsersToProfiles());
+        setProfileStatus("error");
+        setProfileMessage("profilesの読み込みに失敗したため、デモユーザー情報を表示しています。");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUserId]);
+
+  const inviteUser = async () => {
+    if (!canChangeUserRoles) return;
+    if (currentAuthSource !== "supabase") {
+      setInviteStatus("招待メール送信は本ログイン時に利用できます。デモでは入力フォームの確認のみ可能です。");
+      return;
+    }
+
+    setIsInviting(true);
+    setInviteStatus(`${inviteEmail} へ招待メールを送信しています。`);
+
+    try {
+      const invitedProfile = await inviteTeamUser({
+        displayName: inviteName,
+        email: inviteEmail,
+        departmentName: inviteDepartment,
+        position: invitePosition,
+        role: inviteRole,
+      });
+
+      if (invitedProfile) {
+        setProfiles((items) => [invitedProfile, ...items.filter((item) => item.id !== invitedProfile.id)]);
+      }
+      setInviteName("");
+      setInviteEmail("");
+      setInvitePosition("");
+      setInviteRole("member");
+      setInviteStatus(`${inviteEmail} へ招待メールを送信しました。`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "招待に失敗しました。";
+      setInviteStatus(message);
+    } finally {
+      setIsInviting(false);
+    }
+  };
+
+  const updateProfileRole = async (profile: TeamProfileEntry, role: AppRole) => {
+    if (!canChangeUserRoles || profile.role === "owner") return;
+    const normalizedRole = role === "owner" ? "member" : role;
+    const previousProfiles = profiles;
+    setSavingProfileId(profile.id);
+    setProfileMessage(`${profile.displayName}さんの権限を${getRoleLabel(normalizedRole)}に更新しています。`);
+    setProfiles((items) =>
+      items.map((item) =>
+        item.id === profile.id
+          ? { ...item, role: normalizedRole, roleLabel: getRoleLabel(normalizedRole) }
+          : item,
+      ),
+    );
+
+    try {
+      const result = await updateProfileRoleInSupabase(profile.id, normalizedRole);
+      setProfileMessage(result.source === "supabase"
+        ? `${profile.displayName}さんの権限を${getRoleLabel(normalizedRole)}に更新しました。`
+        : `${profile.displayName}さんの権限をデモ表示上で更新しました。Supabase反映には本ログインが必要です。`);
+    } catch (error) {
+      console.warn("Profile role update failed.", error);
+      setProfiles(previousProfiles);
+      setProfileMessage("権限更新に失敗しました。Supabaseのprofiles権限とRLS設定を確認してください。");
+    } finally {
+      setSavingProfileId(null);
+    }
+  };
 
   return (
     <PageFrame title="設定" lead="通知、権限、外部連携、AI連携、承認ルールを管理します。">
@@ -1938,15 +2440,18 @@ export function SettingsPage() {
           <div>
             <h3 className="font-bold">権限ランク追加</h3>
             <p className="mt-1 text-sm text-slate-500">チームページで使う権限ランクを追加できます。本実装ではログインユーザーIDにこのランクを紐づけます。</p>
+            {!canChangeUserRoles ? (
+              <p className="mt-2 text-xs font-bold text-slate-500">現在のログイン: {currentUserName} / 権限変更はOwnerのみ可能です。</p>
+            ) : null}
           </div>
           <PermissionBadge rank="Admin" />
         </div>
         <div className="mt-5 grid gap-3 lg:grid-cols-[180px_1fr_120px]">
-          <input className="h-10 rounded-lg border border-slate-200 px-3 text-sm" placeholder="例: Manager" value={newRank} onChange={(event) => setNewRank(event.target.value)} />
-          <input className="h-10 rounded-lg border border-slate-200 px-3 text-sm" placeholder="権限の説明" value={newDescription} onChange={(event) => setNewDescription(event.target.value)} />
+          <input className="h-10 rounded-lg border border-slate-200 px-3 text-sm disabled:bg-slate-50 disabled:text-slate-400" placeholder="例: Manager" value={newRank} disabled={!canChangeUserRoles} onChange={(event) => setNewRank(event.target.value)} />
+          <input className="h-10 rounded-lg border border-slate-200 px-3 text-sm disabled:bg-slate-50 disabled:text-slate-400" placeholder="権限の説明" value={newDescription} disabled={!canChangeUserRoles} onChange={(event) => setNewDescription(event.target.value)} />
           <button
-            className="h-10 rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white disabled:bg-slate-300"
-            disabled={!newRank.trim()}
+            className="h-10 rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+            disabled={!canChangeUserRoles || !newRank.trim()}
             type="button"
             onClick={() => {
               setPermissionRanks((ranks) => [...ranks, { rank: newRank.trim(), description: newDescription.trim() || "追加された権限ランクです。" }]);
@@ -2028,6 +2533,211 @@ export function SettingsPage() {
               </div>
             ))}
           </div>
+
+          {activeSetting.key === "users" ? (
+            <div className="mt-5 rounded-lg border border-slate-100 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-bold">ユーザー権限一覧</h4>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Ownerは山田太郎さんのみ固定です。Admin/Manager/MemberはOwnerが変更できます。
+                  </p>
+                </div>
+                <span className={`rounded-full px-3 py-1 text-xs font-bold ${profileStatus === "error" ? "bg-red-50 text-red-700" : profileStatus === "loading" ? "bg-blue-50 text-blue-700" : "bg-emerald-50 text-emerald-700"}`}>
+                  {profileStatus === "loading" ? "読込中" : profileStatus === "error" ? "要確認" : `${profiles.length}名`}
+                </span>
+              </div>
+
+              {profileMessage ? (
+                <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">{profileMessage}</p>
+              ) : null}
+
+              {!canManageSettings ? (
+                <p className="mt-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">
+                  現在の権限では設定変更はできません。ユーザー情報は確認のみ可能です。
+                </p>
+              ) : null}
+
+              <div className="mt-4 rounded-lg border border-slate-100 bg-slate-50 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h5 className="text-sm font-black text-slate-900">ユーザー招待</h5>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      Ownerが新しいメンバーへ招待メールを送り、初期権限をprofilesへ登録します。
+                    </p>
+                  </div>
+                  <span className={`rounded-full px-3 py-1 text-xs font-bold ${currentAuthSource === "supabase" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                    {currentAuthSource === "supabase" ? "本ログイン" : "デモ確認中"}
+                  </span>
+                </div>
+                <div className="mt-4 grid gap-3 xl:grid-cols-[1.1fr_1.3fr_1fr_1fr_1fr_140px]">
+                  <input
+                    className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                    placeholder="氏名"
+                    value={inviteName}
+                    disabled={!canChangeUserRoles || isInviting}
+                    onChange={(event) => setInviteName(event.target.value)}
+                  />
+                  <input
+                    className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                    placeholder="メールアドレス"
+                    type="email"
+                    value={inviteEmail}
+                    disabled={!canChangeUserRoles || isInviting}
+                    onChange={(event) => setInviteEmail(event.target.value)}
+                  />
+                  <select
+                    className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                    value={inviteDepartment}
+                    disabled={!canChangeUserRoles || isInviting}
+                    onChange={(event) => setInviteDepartment(event.target.value)}
+                  >
+                    {normalizedDepartments.map((department) => (
+                      <option key={department} value={department}>{department}</option>
+                    ))}
+                  </select>
+                  <input
+                    className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                    placeholder="役職"
+                    value={invitePosition}
+                    disabled={!canChangeUserRoles || isInviting}
+                    onChange={(event) => setInvitePosition(event.target.value)}
+                  />
+                  <select
+                    className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                    value={inviteRole}
+                    disabled={!canChangeUserRoles || isInviting}
+                    onChange={(event) => setInviteRole(event.target.value as AppRole)}
+                  >
+                    {OPERATIONAL_ROLE_OPTIONS.filter((option) => option.value !== "owner").map((option) => (
+                      <option key={`invite-${option.value}`} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                  <button
+                    className="h-10 rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                    type="button"
+                    disabled={!canChangeUserRoles || isInviting || !inviteName.trim() || !inviteEmail.trim()}
+                    onClick={() => void inviteUser()}
+                  >
+                    {isInviting ? "送信中" : "招待"}
+                  </button>
+                </div>
+                {inviteStatus ? (
+                  <p className="mt-3 rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-600">{inviteStatus}</p>
+                ) : null}
+              </div>
+
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full min-w-[820px] text-left text-sm">
+                  <thead className="border-y border-slate-200 bg-slate-50 text-xs text-slate-500">
+                    <tr>
+                      <th className="p-3">ユーザー</th>
+                      <th className="p-3">所属</th>
+                      <th className="p-3">現在の権限</th>
+                      <th className="p-3">権限変更</th>
+                      <th className="p-3">状態</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {profiles.map((profile) => {
+                      const isOwner = profile.role === "owner";
+                      const isSaving = savingProfileId === profile.id;
+                      const canEditRole = canChangeUserRoles && !isOwner;
+                      return (
+                        <tr key={profile.id} className="border-b border-slate-100 hover:bg-slate-50/70">
+                          <td className="p-3">
+                            <p className="font-black text-slate-950">{profile.displayName}</p>
+                            <p className="mt-1 text-xs font-semibold text-slate-500">{profile.email || "メール未設定"}</p>
+                          </td>
+                          <td className="p-3">
+                            <p className="font-bold text-slate-800">{profile.departmentName}</p>
+                            <p className="mt-1 text-xs text-slate-500">{profile.position}</p>
+                          </td>
+                          <td className="p-3">
+                            <PermissionBadge rank={profile.roleLabel} />
+                          </td>
+                          <td className="p-3">
+                            {isOwner ? (
+                              <span className="text-xs font-bold text-slate-500">Owner固定</span>
+                            ) : (
+                              <select
+                                className="h-10 min-w-40 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                                value={profile.role}
+                                disabled={!canEditRole || isSaving}
+                                onChange={(event) => void updateProfileRole(profile, event.target.value as AppRole)}
+                              >
+                                {OPERATIONAL_ROLE_OPTIONS.filter((option) => option.value !== "owner").map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </td>
+                          <td className="p-3">
+                            <span className={`inline-flex min-w-20 justify-center rounded-md px-2 py-1 text-xs font-black ring-1 ${profile.isActive ? "bg-emerald-50 text-emerald-700 ring-emerald-200" : "bg-slate-100 text-slate-500 ring-slate-200"}`}>
+                              {profile.isActive ? "有効" : "停止"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+
+          {activeSetting.key === "departments" ? (
+            <div className="mt-5 rounded-lg border border-slate-100 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-bold">部門マスタ</h4>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    ここで登録した部門が、課題登録の選択メニューとダッシュボードの部門別進捗率に反映されます。
+                  </p>
+                </div>
+                <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
+                  {normalizedDepartments.length}件
+                </span>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-[1fr_120px]">
+                <input
+                  className="h-10 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-[#D6001C]"
+                  placeholder="例: 整備部"
+                  value={newDepartment}
+                  onChange={(event) => setNewDepartment(event.target.value)}
+                />
+                <button
+                  className="h-10 rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                  type="button"
+                  disabled={!newDepartment.trim()}
+                  onClick={() => {
+                    onAddDepartment?.(newDepartment);
+                    setNewDepartment("");
+                  }}
+                >
+                  追加
+                </button>
+              </div>
+              <div className="mt-4 grid gap-2">
+                {normalizedDepartments.map((department) => (
+                  <div key={department} className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                    <span className="text-sm font-bold text-slate-800">{department}</span>
+                    <button
+                      className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:opacity-40"
+                      type="button"
+                      disabled={normalizedDepartments.length <= 1}
+                      onClick={() => onDeleteDepartment?.(department)}
+                    >
+                      <Trash2 size={13} />
+                      削除
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           {activeSetting.key === "permissions" ? (
             <div className="mt-5 rounded-lg border border-slate-100 p-4">

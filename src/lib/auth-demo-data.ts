@@ -26,7 +26,7 @@ export const demoUsers: AuthUser[] = [
     email: "sato@example.com",
     department: "買取営業",
     position: "部門長",
-    role: "Approver",
+    role: "Manager",
     initial: "佐",
   },
   {
@@ -34,8 +34,8 @@ export const demoUsers: AuthUser[] = [
     name: "鈴木 太郎",
     email: "suzuki@example.com",
     department: "情シス",
-    position: "担当者",
-    role: "Editor",
+    position: "管理者",
+    role: "Admin",
     initial: "鈴",
   },
   {
@@ -43,8 +43,8 @@ export const demoUsers: AuthUser[] = [
     name: "田中 美咲",
     email: "tanaka@example.com",
     department: "総務部",
-    position: "確認者",
-    role: "Viewer",
+    position: "担当者",
+    role: "Member",
     initial: "田",
   },
 ];

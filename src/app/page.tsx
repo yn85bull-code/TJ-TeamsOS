@@ -19,17 +19,19 @@ import {
   ReportsPage,
   SendbackTaskEntry,
   SettingsPage,
+  TaskRecord,
   TasksPage,
   TeamsPage,
 } from "@/components/pages/workspace-pages";
 import { AuthUser, demoUsers } from "@/lib/auth-demo-data";
 import { navItems } from "@/lib/dashboard-demo-data";
-import { can, mapDemoRoleToAppRole } from "@/lib/domain/permissions";
-import { normalizePriority } from "@/lib/domain/priority";
+import { can, mapDemoRoleToAppRole, normalizeAppRole } from "@/lib/domain/permissions";
 import { signOutSupabase } from "@/lib/supabase/auth";
+import { loadLocalTaskRecords, saveTaskRecord } from "@/lib/tasks/task-record-store";
 import { createActivityLogRecord, loadActivityLogsFromSupabase } from "@/lib/workspace/activity-log-store";
 import { createApprovalRecord, loadApprovalRecordsFromSupabase, updateApprovalDecision, updateApprovalReview } from "@/lib/workspace/approval-record-store";
 import { createIssueRecord, createTaskRecord, loadCreatedRecordsFromSupabase, restoreIssueRecord, restoreTaskRecord, softDeleteIssueRecord, softDeleteTaskRecord, updateIssueRecord, updateTaskRecord } from "@/lib/workspace/created-record-store";
+import { DEPARTMENTS_STORAGE_KEY, DEFAULT_DEPARTMENTS, normalizeDepartmentList } from "@/lib/workspace/department-store";
 import { createNotificationRecord, loadNotificationsFromSupabase, markNotificationReadRecord, markNotificationsReadRecord, type AppNotificationEntry } from "@/lib/workspace/notification-store";
 import { AppRole } from "@/types/database";
 import { CheckCircle2, X } from "lucide-react";
@@ -65,6 +67,7 @@ export default function Home() {
   const [preferredTaskView, setPreferredTaskView] = useState<"mine" | "team" | "approval" | "sendback" | undefined>();
   const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
   const [headerNotifications, setHeaderNotifications] = useState<AppNotificationEntry[]>([]);
+  const [departments, setDepartments] = useState<string[]>(DEFAULT_DEPARTMENTS);
   const activeItem = useMemo(
     () => navItems.find((item) => item.key === activeKey) ?? navItems[0],
     [activeKey],
@@ -93,6 +96,8 @@ export default function Home() {
     setCreatedIssues(loadStoredList<CreatedIssueEntry>(CREATED_ISSUES_STORAGE_KEY));
     setActivityLogs(loadStoredList<ActivityLogEntry>(ACTIVITY_LOGS_STORAGE_KEY));
     setHeaderNotifications(loadStoredList<AppNotificationEntry>(NOTIFICATIONS_STORAGE_KEY));
+    const storedDepartments = loadStoredList<string>(DEPARTMENTS_STORAGE_KEY);
+    setDepartments(storedDepartments.length ? normalizeDepartmentList(storedDepartments) : DEFAULT_DEPARTMENTS);
   }, []);
 
   useEffect(() => {
@@ -156,9 +161,13 @@ export default function Home() {
     saveStoredList(NOTIFICATIONS_STORAGE_KEY, headerNotifications);
   }, [headerNotifications]);
 
+  useEffect(() => {
+    saveStoredList(DEPARTMENTS_STORAGE_KEY, departments);
+  }, [departments]);
+
   const createApprovalRequest = async (approval: ApprovalRequestEntry) => {
     const fallbackReviewer = approvalReviewerOptions[0];
-    const normalizedApproval = {
+    const normalizedApproval: ApprovalRequestEntry = {
       ...approval,
       requesterId: approval.requesterId ?? (currentUser?.authSource === "supabase" ? currentUser.id : undefined),
       requester: approval.requester || currentUser?.name || "山田 太郎",
@@ -167,42 +176,63 @@ export default function Home() {
       finalApproverId: finalApprover.id,
       finalApproverName: finalApprover.name,
     };
-    const saved = await createApprovalRecord(normalizedApproval, normalizedApproval.requesterId);
-    setApprovalRequests((items) => [saved.entry, ...items.filter((item) => item.taskId !== saved.entry.taskId)]);
-    if (saved.entry.taskId) {
-      setSendbackTasks((items) => items.filter((item) => item.id !== saved.entry.taskId));
+    setApprovalRequests((items) => [
+      normalizedApproval,
+      ...items.filter((item) => !isSameApprovalRequest(item, normalizedApproval)),
+    ]);
+    if (normalizedApproval.taskId) {
+      setSendbackTasks((items) => items.filter((item) => item.id !== normalizedApproval.taskId));
     }
-    setResolvedApprovalIds((ids) => ids.filter((id) => id !== saved.entry.id));
+    setResolvedApprovalIds((ids) => ids.filter((id) => id !== normalizedApproval.id));
+    setPreferredTaskView("approval");
+    setActiveKey("approvals");
+
+    let approvalForSideEffects = normalizedApproval;
+    try {
+      const saved = await createApprovalRecord(normalizedApproval, normalizedApproval.requesterId);
+      approvalForSideEffects = saved.entry;
+      setApprovalRequests((items) =>
+        items.map((item) => isSameApprovalRequest(item, normalizedApproval) ? saved.entry : item),
+      );
+    } catch (error) {
+      console.warn("Approval request save failed. Keeping optimistic local request.", error);
+    }
+
     addActivityLog({
       actor: currentUser?.name ?? "山田 太郎",
       action: "承認申請を作成",
-      target: saved.entry.target,
-      targetId: saved.entry.supabaseId,
+      target: approvalForSideEffects.target,
+      targetId: approvalForSideEffects.supabaseId,
       targetType: "approval",
-      time: saved.entry.requestedAt ?? formatDateTime(new Date()),
+      time: approvalForSideEffects.requestedAt ?? formatDateTime(new Date()),
     });
     addNotification({
       title: "承認申請が届きました",
-      detail: `${saved.entry.requester}さんから「${saved.entry.target}」の承認申請。確認承認者: ${saved.entry.reviewerName ?? "未設定"} / 最終決裁: ${saved.entry.finalApproverName ?? finalApprover.name}`,
+      detail: `${approvalForSideEffects.requester}さんから「${approvalForSideEffects.target}」の承認申請。確認承認者: ${approvalForSideEffects.reviewerName ?? "未設定"} / 最終決裁: ${approvalForSideEffects.finalApproverName ?? finalApprover.name}`,
       target: "approvals",
       notificationType: "approval",
       targetType: "approval",
-      targetId: saved.entry.supabaseId,
-      targetLabel: saved.entry.target,
-    }, resolveApprovalRequestRecipients(saved.entry, currentUser));
-    setPreferredTaskView("approval");
-    setActiveKey("approvals");
+      targetId: approvalForSideEffects.supabaseId,
+      targetLabel: approvalForSideEffects.target,
+    }, resolveApprovalRequestRecipients(approvalForSideEffects, currentUser));
   };
 
   const resolveApproval = (approval: ApprovalRequestEntry, mode: "approve" | "sendback", comment: string) => {
+    const resolvedAt = formatDateTime(new Date());
     setResolvedApprovalIds((ids) => [...new Set([...ids, approval.id])]);
+    if (mode === "approve") {
+      completeApprovedTask(approval, comment, resolvedAt);
+    }
     addActivityLog({
       actor: currentUser?.name ?? "山田 太郎",
       action: mode === "approve" ? "承認申請を承認" : "承認申請を差し戻し",
       target: approval.target,
+      detail: mode === "approve"
+        ? "関連タスクを完了扱いにし、通常のタスク一覧から非表示にしました。"
+        : "関連タスクを差し戻しタスクとして再対応に戻しました。",
       targetId: approval.supabaseId,
       targetType: "approval",
-      time: formatDateTime(new Date()),
+      time: resolvedAt,
     });
     void updateApprovalDecision(
       approval,
@@ -220,6 +250,28 @@ export default function Home() {
       targetId: approval.supabaseId,
       targetLabel: approval.target,
     }, resolveApprovalResultRecipients(approval, currentUser));
+  };
+
+  const completeApprovedTask = (approval: ApprovalRequestEntry, comment: string, approvedAt: string) => {
+    const matchedTask = createdTasks.find((task) => isApprovalTaskMatch(approval, task));
+    if (!approval.taskId && !approval.taskSupabaseId && !matchedTask) return;
+
+    setCreatedTasks((items) =>
+      items.map((task) =>
+        isApprovalTaskMatch(approval, task)
+          ? { ...task, progress: 100, status: "done", updatedAt: approvedAt }
+          : task,
+      ),
+    );
+
+    const existingRecords = loadLocalTaskRecords({});
+    const existingRecord = getExistingApprovalTaskRecord(approval, matchedTask, existingRecords);
+    const doneRecord = buildApprovedTaskRecord(approval, existingRecord, comment, approvedAt);
+    for (const taskId of getApprovalTaskRecordIds(approval, matchedTask)) {
+      void saveTaskRecord(taskId, doneRecord, "completed").catch((error) => {
+        console.warn("Task completion save failed after approval.", error);
+      });
+    }
   };
 
   const reviewApproval = (approval: ApprovalRequestEntry, comment: string) => {
@@ -264,9 +316,21 @@ export default function Home() {
     setPreferredTaskView("sendback");
   };
 
+  const addDepartment = (name: string) => {
+    setDepartments((items) => normalizeDepartmentList([...items, name]));
+  };
+
+  const deleteDepartment = (name: string) => {
+    setDepartments((items) => {
+      const nextDepartments = items.filter((item) => item !== name);
+      return nextDepartments.length ? nextDepartments : items;
+    });
+  };
+
   const addActivityLog = (log: ActivityLogEntry) => {
     const normalizedLog = {
       ...log,
+      id: log.id ?? log.supabaseId ?? createClientId("log"),
       actor: log.actor || currentUser?.name || "山田 太郎",
     };
     setActivityLogs((logs) => [normalizedLog, ...logs]);
@@ -346,15 +410,17 @@ export default function Home() {
       targetId: saved.entry.supabaseId,
       targetLabel: saved.entry.title,
     }, resolveTaskAssigneeRecipients(saved.entry, currentUser));
-    setPreferredTaskView("team");
+    setPreferredTaskView(isTaskForCurrentUser(saved.entry, currentUser) ? "mine" : "team");
     setActiveKey("tasks");
   };
   const updateCreatedIssue = (issue: CreatedIssueEntry) => {
+    const previousIssue = createdIssues.find((item) => isSameRecord(item, issue));
     setCreatedIssues((items) => items.map((item) => item.id === issue.id ? issue : item));
     addActivityLog({
       actor: currentUser?.name ?? "山田 太郎",
       action: "課題を編集",
       target: issue.title,
+      detail: previousIssue ? describeIssueChanges(previousIssue, issue) : "編集内容を保存",
       targetId: issue.supabaseId,
       targetType: "issue",
       time: issue.updatedAt ?? formatDateTime(new Date()),
@@ -362,11 +428,13 @@ export default function Home() {
     void updateIssueRecord(issue);
   };
   const updateCreatedTask = (task: CreatedTaskEntry) => {
+    const previousTask = createdTasks.find((item) => isSameRecord(item, task));
     setCreatedTasks((items) => items.map((item) => item.id === task.id ? task : item));
     addActivityLog({
       actor: currentUser?.name ?? "山田 太郎",
       action: "タスクを編集",
       target: task.title,
+      detail: previousTask ? describeTaskChanges(previousTask, task) : "編集内容を保存",
       targetId: task.supabaseId,
       targetType: "task",
       time: task.updatedAt ?? formatDateTime(new Date()),
@@ -422,77 +490,33 @@ export default function Home() {
     void restoreTaskRecord(task, currentUser?.authSource === "supabase" ? currentUser.id : undefined);
   };
   const completeCreate = async (payload: CreateDrawerPayload) => {
-    if (payload.type === "issue") {
-      const issue: CreatedIssueEntry = {
-        id: `ISS-NEW-${Date.now()}`,
-        title: payload.title,
-        department: payload.department,
-        owner: payload.assignee,
-        priority: payload.priority,
-        status: "未着手",
-        due: payload.displayDueDate,
-        createdAt: payload.registeredAt,
-        category1: payload.category1,
-        category2: payload.category2,
-        asIs: payload.asIs,
-        createdById: currentUser?.authSource === "supabase" ? currentUser.id : undefined,
-        createdByName: currentUser?.name ?? "山田 太郎",
-      };
-      const saved = await createIssueRecord(issue, issue.createdById);
-      setCreatedIssues((items) => [saved.entry, ...items]);
-      addActivityLog({
-        actor: currentUser?.name ?? "山田 太郎",
-        action: "課題を登録",
-        target: saved.entry.title,
-        targetId: saved.entry.supabaseId,
-        targetType: "issue",
-        time: payload.registeredAt,
-      });
-      setActiveKey("issues");
-    }
-
-    if (payload.type === "task") {
-      const task: CreatedTaskEntry = {
-        id: `task-direct-${Date.now()}`,
-        title: payload.title,
-        projectName: payload.department,
-        assigneeName: payload.assignee,
-        dueDate: payload.displayDueDate,
-        priority: normalizePriority(payload.priority),
-        status: "not_started",
-        progress: 0,
-        sourceType: "direct",
-        sourceIssueId: "直接登録",
-        issueCreatedAt: payload.registeredAt,
-        taskizedAt: payload.registeredAt,
-        responsiblePerson: payload.assignee,
-        assigneePerson: payload.assignee,
-        createdById: currentUser?.authSource === "supabase" ? currentUser.id : undefined,
-        createdByName: currentUser?.name ?? "山田 太郎",
-      };
-      const saved = await createTaskRecord(task, task.createdById);
-      setCreatedTasks((items) => [saved.entry, ...items]);
-      addActivityLog({
-        actor: currentUser?.name ?? "山田 太郎",
-        action: "タスクを登録",
-        target: saved.entry.title,
-        targetId: saved.entry.supabaseId,
-        targetType: "task",
-        time: payload.registeredAt,
-      });
-      addNotification({
-        title: "タスクが割り当てられました",
-        detail: `「${saved.entry.title}」の担当者になりました`,
-        target: "tasks",
-        notificationType: "task_assigned",
-        targetType: "task",
-        targetId: saved.entry.supabaseId,
-        targetLabel: saved.entry.title,
-        time: payload.registeredAt,
-      }, resolveTaskAssigneeRecipients(saved.entry, currentUser));
-      setPreferredTaskView("team");
-      setActiveKey("tasks");
-    }
+    const issue: CreatedIssueEntry = {
+      id: `ISS-NEW-${Date.now()}`,
+      title: payload.title,
+      department: payload.department,
+      owner: payload.registrant,
+      priority: payload.priority,
+      status: "未着手",
+      due: payload.displayDueDate,
+      createdAt: payload.registeredAt,
+      category1: payload.category1,
+      category2: payload.category2,
+      asIs: payload.asIs,
+      toBe: payload.toBe,
+      createdById: currentUser?.authSource === "supabase" ? currentUser.id : undefined,
+      createdByName: currentUser?.name ?? "山田 太郎",
+    };
+    const saved = await createIssueRecord(issue, issue.createdById);
+    setCreatedIssues((items) => [saved.entry, ...items]);
+    addActivityLog({
+      actor: currentUser?.name ?? "山田 太郎",
+      action: "課題を登録",
+      target: saved.entry.title,
+      targetId: saved.entry.supabaseId,
+      targetType: "issue",
+      time: payload.registeredAt,
+    });
+    setActiveKey("issues");
 
     setCreateOpen(false);
     setCreateNotice(payload);
@@ -547,6 +571,7 @@ export default function Home() {
             requesterName={currentUser.name}
             currentUserName={currentUser.name}
             currentUserId={currentUser.id}
+            currentAuthSource={currentUser.authSource}
             approvalReviewerOptions={approvalReviewerOptions}
             finalApprover={finalApprover}
             onCreateApproval={createApprovalRequest}
@@ -565,10 +590,13 @@ export default function Home() {
             activityLogs={activityLogs}
             onAddLog={addActivityLog}
             appRole={currentAppRole}
+            departments={departments}
+            onAddDepartment={addDepartment}
+            onDeleteDepartment={deleteDepartment}
           />
         </main>
       </div>
-      <CreateDrawer open={createOpen} onClose={() => setCreateOpen(false)} onCreated={completeCreate} />
+      <CreateDrawer open={createOpen} onClose={() => setCreateOpen(false)} onCreated={completeCreate} departmentOptions={departments} currentUserName={currentUser?.name ?? "山田 太郎"} />
     </div>
   );
 }
@@ -612,6 +640,7 @@ function ActivePage({
   requesterName,
   currentUserName,
   currentUserId,
+  currentAuthSource,
   approvalReviewerOptions,
   finalApprover,
   onCreateApproval,
@@ -630,6 +659,9 @@ function ActivePage({
   activityLogs,
   onAddLog,
   appRole,
+  departments,
+  onAddDepartment,
+  onDeleteDepartment,
 }: {
   activeKey: string;
   onNavigate: (key: string) => void;
@@ -642,6 +674,7 @@ function ActivePage({
   requesterName: string;
   currentUserName: string;
   currentUserId: string;
+  currentAuthSource?: AuthUser["authSource"];
   approvalReviewerOptions: ApprovalReviewerOption[];
   finalApprover: ApprovalReviewerOption;
   onCreateApproval: (approval: ApprovalRequestEntry) => void;
@@ -660,12 +693,15 @@ function ActivePage({
   activityLogs: ActivityLogEntry[];
   onAddLog: (log: ActivityLogEntry) => void;
   appRole: AppRole;
+  departments: string[];
+  onAddDepartment: (name: string) => void;
+  onDeleteDepartment: (name: string) => void;
 }) {
   switch (activeKey) {
     case "dashboard":
-      return <DashboardPage onNavigate={onNavigate} createdTasks={createdTasks} createdIssues={createdIssues} />;
+      return <DashboardPage onNavigate={onNavigate} createdTasks={createdTasks} createdIssues={createdIssues} departmentOptions={departments} />;
     case "issues":
-      return <IssuesPage onNavigate={onNavigate} onAddLog={onAddLog} onCreateTask={onCreateTask} onUpdateIssue={onUpdateIssue} onDeleteIssue={onDeleteIssue} onRestoreIssue={onRestoreIssue} createdIssues={createdIssues} currentUserName={currentUserName} currentUserId={currentUserId} appRole={appRole} />;
+      return <IssuesPage onNavigate={onNavigate} onAddLog={onAddLog} onCreateTask={onCreateTask} onUpdateIssue={onUpdateIssue} onDeleteIssue={onDeleteIssue} onRestoreIssue={onRestoreIssue} createdIssues={createdIssues} currentUserName={currentUserName} currentUserId={currentUserId} appRole={appRole} departmentOptions={departments} />;
     case "tasks":
       return <TasksPage appRole={appRole} requesterName={requesterName} currentUserName={currentUserName} currentUserId={currentUserId} sendbackTasks={sendbackTasks} createdTasks={createdTasks} preferredView={preferredTaskView} approvalReviewerOptions={approvalReviewerOptions} finalApprover={finalApprover} onCreateApproval={onCreateApproval} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} onRestoreTask={onRestoreTask} />;
     case "approvals":
@@ -679,9 +715,9 @@ function ActivePage({
     case "logs":
       return <ActivityLogsPage activityLogs={activityLogs} />;
     case "settings":
-      return <SettingsPage />;
+      return <SettingsPage departments={departments} onAddDepartment={onAddDepartment} onDeleteDepartment={onDeleteDepartment} currentUserId={currentUserId} currentUserName={currentUserName} currentAuthSource={currentAuthSource} appRole={appRole} />;
     default:
-      return <DashboardPage onNavigate={onNavigate} createdTasks={createdTasks} createdIssues={createdIssues} />;
+      return <DashboardPage onNavigate={onNavigate} createdTasks={createdTasks} createdIssues={createdIssues} departmentOptions={departments} />;
   }
 }
 
@@ -709,9 +745,10 @@ function shouldShowNotification(notification: AppNotificationEntry, currentUser:
 }
 
 function getEffectiveAppRole(user: AuthUser | null): AppRole {
-  const mappedRole = (user?.appRole as AppRole | undefined) ?? mapDemoRoleToAppRole(user?.role ?? "Viewer");
-  if (mappedRole === "owner" && !isSoleOwnerUser(user)) return "admin";
-  return mappedRole;
+  const mappedRole = (user?.appRole as AppRole | undefined) ?? mapDemoRoleToAppRole(user?.role ?? "Member");
+  const normalizedRole = normalizeAppRole(mappedRole);
+  if (normalizedRole === "owner" && !isSoleOwnerUser(user)) return "admin";
+  return normalizedRole;
 }
 
 function getSoleOwnerApprover(currentUser?: AuthUser | null): ApprovalReviewerOption {
@@ -725,7 +762,7 @@ function getSoleOwnerApprover(currentUser?: AuthUser | null): ApprovalReviewerOp
 
 function getApprovalReviewerOptions(): ApprovalReviewerOption[] {
   return demoUsers
-    .filter((user) => user.id !== SOLE_OWNER_USER_ID && user.role !== "Viewer")
+    .filter((user) => user.id !== SOLE_OWNER_USER_ID && ["Admin", "Manager"].includes(user.role))
     .map((user) => ({ id: user.id, name: user.name, role: user.role }));
 }
 
@@ -763,6 +800,77 @@ function resolveTaskAssigneeRecipients(task: CreatedTaskEntry, currentUser: Auth
   return currentUser ? [toNotificationRecipient(currentUser)] : [];
 }
 
+function isTaskForCurrentUser(task: CreatedTaskEntry, currentUser: AuthUser | null) {
+  if (!currentUser) return false;
+  if (task.createdById && task.createdById === currentUser.id) return true;
+  return [task.assigneeName, task.assigneePerson, task.responsiblePerson, task.createdByName]
+    .some((name) => Boolean(name && samePerson(name, currentUser.name)));
+}
+
+function describeIssueChanges(before: CreatedIssueEntry, after: CreatedIssueEntry) {
+  return describeChanges([
+    { label: "タイトル", before: before.title, after: after.title },
+    { label: "部門", before: before.department, after: after.department },
+    { label: "登録者", before: before.owner, after: after.owner },
+    { label: "優先度", before: before.priority, after: after.priority },
+    { label: "ステータス", before: before.status, after: after.status },
+    { label: "期限", before: before.due, after: after.due },
+    { label: "課題分類大区分", before: before.category1, after: after.category1 },
+    { label: "課題分類小区分", before: before.category2, after: after.category2 },
+    { label: "As-Is", before: before.asIs, after: after.asIs },
+    { label: "To-Be", before: before.toBe, after: after.toBe },
+  ]);
+}
+
+function describeTaskChanges(before: CreatedTaskEntry, after: CreatedTaskEntry) {
+  return describeChanges([
+    { label: "タイトル", before: before.title, after: after.title },
+    { label: "部門/プロジェクト", before: before.projectName, after: after.projectName },
+    { label: "担当", before: before.assigneeName, after: after.assigneeName },
+    { label: "担当責任者", before: before.responsiblePerson, after: after.responsiblePerson },
+    { label: "担当者", before: before.assigneePerson, after: after.assigneePerson },
+    { label: "期限", before: before.dueDate, after: after.dueDate },
+    { label: "優先度", before: formatTaskPriority(before.priority), after: formatTaskPriority(after.priority) },
+    { label: "ステータス", before: formatTaskStatus(before.status), after: formatTaskStatus(after.status) },
+    { label: "進捗", before: `${before.progress}%`, after: `${after.progress}%` },
+  ]);
+}
+
+function describeChanges(changes: Array<{ label: string; before?: string | number; after?: string | number }>) {
+  const changed = changes
+    .filter(({ before, after }) => normalizeLogValue(before) !== normalizeLogValue(after))
+    .map(({ label, before, after }) => `${label}: ${formatLogValue(before)} → ${formatLogValue(after)}`);
+  return changed.length ? changed.join(" / ") : "変更差分なし";
+}
+
+function normalizeLogValue(value?: string | number) {
+  return String(value ?? "").trim();
+}
+
+function formatLogValue(value?: string | number) {
+  const formatted = normalizeLogValue(value);
+  return formatted || "未設定";
+}
+
+function formatTaskPriority(priority: CreatedTaskEntry["priority"]) {
+  const labels: Record<CreatedTaskEntry["priority"], string> = {
+    must: "Must",
+    should: "Should",
+    could: "Could",
+  };
+  return labels[priority] ?? priority;
+}
+
+function formatTaskStatus(status: CreatedTaskEntry["status"]) {
+  const labels: Record<CreatedTaskEntry["status"], string> = {
+    not_started: "未着手",
+    in_progress: "進行中",
+    approval_pending: "承認待ち",
+    done: "完了",
+  };
+  return labels[status] ?? status;
+}
+
 function normalizeNotificationRecipients(recipients: NotificationRecipient[]) {
   const unique = new Map<string, NotificationRecipient>();
   for (const recipient of recipients) {
@@ -789,6 +897,58 @@ function findDemoUserByName(value?: string) {
 
 function splitRecipientNames(value: string) {
   return value.split(/[\/／,、]/).map((part) => part.trim()).filter(Boolean);
+}
+
+function isApprovalTaskMatch(approval: ApprovalRequestEntry, task: CreatedTaskEntry) {
+  return Boolean(
+    (approval.taskId && approval.taskId === task.id) ||
+    (approval.taskSupabaseId && approval.taskSupabaseId === task.supabaseId),
+  );
+}
+
+function isSameApprovalRequest(left: ApprovalRequestEntry, right: ApprovalRequestEntry) {
+  return Boolean(
+    left.id === right.id ||
+    (left.supabaseId && left.supabaseId === right.supabaseId) ||
+    (left.taskId && left.taskId === right.taskId),
+  );
+}
+
+function getApprovalTaskRecordIds(approval: ApprovalRequestEntry, task?: CreatedTaskEntry) {
+  return Array.from(new Set([
+    approval.taskId,
+    task?.id,
+    approval.taskSupabaseId,
+    task?.supabaseId,
+  ].filter((id): id is string => Boolean(id))));
+}
+
+function getExistingApprovalTaskRecord(
+  approval: ApprovalRequestEntry,
+  task: CreatedTaskEntry | undefined,
+  records: Record<string, TaskRecord>,
+) {
+  return getApprovalTaskRecordIds(approval, task)
+    .map((taskId) => records[taskId])
+    .find(Boolean);
+}
+
+function buildApprovedTaskRecord(
+  approval: ApprovalRequestEntry,
+  existingRecord: TaskRecord | undefined,
+  comment: string,
+  approvedAt: string,
+): TaskRecord {
+  return {
+    progress: 100,
+    todoMemo: existingRecord?.todoMemo ?? approval.body ?? approval.target,
+    approvalToBe: existingRecord?.approvalToBe ?? approval.body,
+    approvalRequestedAt: existingRecord?.approvalRequestedAt ?? approval.requestedAt,
+    updates: [
+      { at: approvedAt, memo: `最終承認完了: ${comment}`, progress: 100 },
+      ...(existingRecord?.updates ?? []),
+    ],
+  };
 }
 
 function samePerson(left: string, right: string) {
@@ -823,4 +983,18 @@ function mergeByRecordId<T extends { id?: string; supabaseId?: string }>(incomin
 
 function getRecordMergeKey(item: { id?: string; supabaseId?: string }) {
   return item.supabaseId ?? item.id ?? JSON.stringify(item);
+}
+
+function isSameRecord(left: { id?: string; supabaseId?: string }, right: { id?: string; supabaseId?: string }) {
+  return Boolean(
+    (left.id && right.id && left.id === right.id) ||
+    (left.supabaseId && right.supabaseId && left.supabaseId === right.supabaseId),
+  );
+}
+
+function createClientId(prefix: string) {
+  const randomValue = typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : Math.random().toString(36).slice(2);
+  return `${prefix}-${Date.now()}-${randomValue}`;
 }

@@ -36,6 +36,7 @@ export async function createActivityLogRecord(log: ActivityLogEntry, actorId?: s
     target_label: log.target,
     after_data: {
       target: log.target,
+      detail: log.detail ?? null,
       time: log.time,
     } as Json,
   };
@@ -73,11 +74,18 @@ function rowToActivityLog(row: AuditLogRow): ActivityLogEntry {
     actor: row.actor_name ?? "ログインユーザー",
     action: row.action,
     target: row.target_label ?? row.target_id ?? "未設定",
+    detail: readLogDetail(row.after_data),
     targetId: row.target_id ?? undefined,
     targetType: row.target_type,
     time: formatDateTimeForDisplay(row.created_at),
     supabaseId: row.id,
   };
+}
+
+function readLogDetail(value: Json | null) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const detail = (value as { detail?: Json }).detail;
+  return typeof detail === "string" && detail ? detail : undefined;
 }
 
 function canSaveToSupabase(actorId?: string) {

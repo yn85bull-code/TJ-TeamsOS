@@ -24,12 +24,12 @@ export const colorMap: Record<KpiColor, { text: string; bg: string; bar: string;
 
 export function PriorityBadge({ priority }: { priority: TaskPriority }) {
   const config = priorityMap[priority];
-  return <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-bold ring-1 ${config.className}`}>{config.label}</span>;
+  return <span className={`inline-flex shrink-0 whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-bold ring-1 ${config.className}`}>{config.label}</span>;
 }
 
 export function StatusBadge({ status }: { status: TaskStatus }) {
   const config = statusMap[status];
-  return <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-bold ring-1 ${config.className}`}>{config.label}</span>;
+  return <span className={`inline-flex shrink-0 whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-bold ring-1 ${config.className}`}>{config.label}</span>;
 }
 
 export function ProgressBar({ value, tone = "bg-[#D6001C]" }: { value: number; tone?: string }) {

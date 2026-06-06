@@ -36,14 +36,14 @@ values
     '00000000-0000-0000-0000-000000000003',
     '鈴木 太郎',
     'suzuki@example.com',
-    'member',
+    'admin',
     (select id from public.departments where name = '情シス')
   ),
   (
     '00000000-0000-0000-0000-000000000004',
     '田中 美咲',
     'tanaka@example.com',
-    'viewer',
+    'member',
     (select id from public.departments where name = '総務部')
   )
 on conflict (id) do update set
