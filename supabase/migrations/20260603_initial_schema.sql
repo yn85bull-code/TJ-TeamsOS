@@ -52,6 +52,7 @@ create table public.profiles (
   display_name text not null,
   email text,
   avatar_url text,
+  position text,
   role app_role not null default 'member',
   department_id uuid,
   team_id uuid,

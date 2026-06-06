@@ -163,6 +163,9 @@ function profileRowToEntry(profile: ProfileRow, departmentsById: Map<string, Dep
   const fallback = demoUsers.find((user) => user.email.toLowerCase() === profile.email?.toLowerCase());
   const role = normalizeAppRole(profile.role);
   const department = profile.department_id ? departmentsById.get(profile.department_id) : undefined;
+  const position = typeof profile.position === "string" && profile.position.trim()
+    ? profile.position.trim()
+    : undefined;
 
   return {
     id: profile.id,
@@ -170,7 +173,7 @@ function profileRowToEntry(profile: ProfileRow, departmentsById: Map<string, Dep
     email: profile.email ?? fallback?.email ?? "",
     departmentId: profile.department_id ?? undefined,
     departmentName: department?.name ?? fallback?.department ?? "未設定",
-    position: fallback?.position ?? "未設定",
+    position: position ?? fallback?.position ?? "未設定",
     role,
     roleLabel: getRoleLabel(role),
     isActive: profile.is_active,

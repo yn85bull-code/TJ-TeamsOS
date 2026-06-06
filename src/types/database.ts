@@ -46,6 +46,7 @@ export type Database = {
           display_name: string;
           email: string | null;
           avatar_url: string | null;
+          position: string | null;
           role: AppRole;
           department_id: string | null;
           team_id: string | null;
@@ -57,6 +58,7 @@ export type Database = {
           display_name: string;
           email?: string | null;
           avatar_url?: string | null;
+          position?: string | null;
           role?: AppRole;
           department_id?: string | null;
           team_id?: string | null;

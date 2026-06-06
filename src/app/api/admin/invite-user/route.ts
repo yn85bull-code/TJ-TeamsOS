@@ -99,17 +99,29 @@ export async function POST(request: NextRequest) {
     }
 
     const profilesTable = serviceClient.from("profiles") as unknown as ProfileUpsertTable;
-    const { data: profile, error: upsertError } = await profilesTable
-      .upsert({
-        id: invited.data.user.id,
-        display_name: displayName,
-        email,
-        role,
-        department_id: department.id,
-        is_active: true,
-      }, { onConflict: "id" })
+    const profilePayload: ProfileInsert = {
+      id: invited.data.user.id,
+      display_name: displayName,
+      email,
+      position,
+      role,
+      department_id: department.id,
+      is_active: true,
+    };
+    let { data: profile, error: upsertError } = await profilesTable
+      .upsert(profilePayload, { onConflict: "id" })
       .select("*")
       .single();
+
+    if (upsertError && isMissingPositionColumnError(upsertError)) {
+      const { position: _position, ...profilePayloadWithoutPosition } = profilePayload;
+      const retryResult = await profilesTable
+        .upsert(profilePayloadWithoutPosition, { onConflict: "id" })
+        .select("*")
+        .single();
+      profile = retryResult.data;
+      upsertError = retryResult.error;
+    }
 
     if (upsertError || !profile) {
       return NextResponse.json({ error: "プロフィール登録に失敗しました。" }, { status: 500 });
@@ -122,7 +134,7 @@ export async function POST(request: NextRequest) {
         email: profile.email,
         departmentId: profile.department_id,
         departmentName: department.name,
-        position,
+        position: profile.position ?? position,
         role: profile.role,
         isActive: profile.is_active,
       },
@@ -131,6 +143,10 @@ export async function POST(request: NextRequest) {
     const message = error instanceof Error ? error.message : "招待処理でエラーが発生しました。";
     return NextResponse.json({ error: message }, { status: message.includes("service_role") ? 500 : 400 });
   }
+}
+
+function isMissingPositionColumnError(error: Error) {
+  return error.message.includes("position") && error.message.includes("profiles");
 }
 
 function normalizeInviteRole(role: unknown): AppRole | undefined {
