@@ -75,6 +75,7 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
   const [activityLogs, setActivityLogs] = useState<ActivityLogEntry[]>([]);
   const [headerNotifications, setHeaderNotifications] = useState<AppNotificationEntry[]>([]);
   const [departments, setDepartments] = useState<string[]>(DEFAULT_DEPARTMENTS);
+  const [storedRecordsLoaded, setStoredRecordsLoaded] = useState(false);
   const currentAppRole = useMemo<AppRole>(
     () => getEffectiveAppRole(currentUser),
     [currentUser],
@@ -109,6 +110,7 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
       setHeaderNotifications(loadStoredList<AppNotificationEntry>(NOTIFICATIONS_STORAGE_KEY));
       const storedDepartments = loadStoredList<string>(DEPARTMENTS_STORAGE_KEY);
       setDepartments(storedDepartments.length ? normalizeDepartmentList(storedDepartments) : DEFAULT_DEPARTMENTS);
+      setStoredRecordsLoaded(true);
     });
     return () => {
       cancelled = true;
@@ -163,40 +165,49 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
   }, [currentUser]);
 
   useEffect(() => {
+    if (!storedRecordsLoaded) return;
     saveStoredList(APPROVAL_REQUESTS_STORAGE_KEY, approvalRequests);
-  }, [approvalRequests]);
+  }, [approvalRequests, storedRecordsLoaded]);
 
   useEffect(() => {
+    if (!storedRecordsLoaded) return;
     saveStoredList(RESOLVED_APPROVALS_STORAGE_KEY, resolvedApprovalIds);
-  }, [resolvedApprovalIds]);
+  }, [resolvedApprovalIds, storedRecordsLoaded]);
 
   useEffect(() => {
+    if (!storedRecordsLoaded) return;
     saveStoredList(APPROVAL_HISTORY_STORAGE_KEY, approvalHistory);
-  }, [approvalHistory]);
+  }, [approvalHistory, storedRecordsLoaded]);
 
   useEffect(() => {
+    if (!storedRecordsLoaded) return;
     saveStoredList(SENDBACK_TASKS_STORAGE_KEY, sendbackTasks);
-  }, [sendbackTasks]);
+  }, [sendbackTasks, storedRecordsLoaded]);
 
   useEffect(() => {
+    if (!storedRecordsLoaded) return;
     saveStoredList(CREATED_TASKS_STORAGE_KEY, createdTasks);
-  }, [createdTasks]);
+  }, [createdTasks, storedRecordsLoaded]);
 
   useEffect(() => {
+    if (!storedRecordsLoaded) return;
     saveStoredList(CREATED_ISSUES_STORAGE_KEY, createdIssues);
-  }, [createdIssues]);
+  }, [createdIssues, storedRecordsLoaded]);
 
   useEffect(() => {
+    if (!storedRecordsLoaded) return;
     saveStoredList(ACTIVITY_LOGS_STORAGE_KEY, activityLogs);
-  }, [activityLogs]);
+  }, [activityLogs, storedRecordsLoaded]);
 
   useEffect(() => {
+    if (!storedRecordsLoaded) return;
     saveStoredList(NOTIFICATIONS_STORAGE_KEY, headerNotifications);
-  }, [headerNotifications]);
+  }, [headerNotifications, storedRecordsLoaded]);
 
   useEffect(() => {
+    if (!storedRecordsLoaded) return;
     saveStoredList(DEPARTMENTS_STORAGE_KEY, departments);
-  }, [departments]);
+  }, [departments, storedRecordsLoaded]);
 
   useEffect(() => {
     if (currentUser && !canAccessNavItem(currentAppRole, activeKey)) {
@@ -450,7 +461,6 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
       targetLabel: saved.entry.title,
     }, resolveTaskAssigneeRecipients(saved.entry, currentUser));
     setPreferredTaskView(isTaskForCurrentUser(saved.entry, currentUser) ? "mine" : "team");
-    setActiveKey("tasks");
   };
   const updateCreatedIssue = (issue: CreatedIssueEntry) => {
     const previousIssue = createdIssues.find((item) => isSameRecord(item, issue));
@@ -648,7 +658,7 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
   return (
     <div className="min-h-screen bg-[#F7F8FA] text-slate-950">
       <Sidebar activeKey={safeActiveKey} appRole={currentAppRole} onSelect={setActiveKey} />
-      <div className="lg:pl-[240px]">
+      <div className="min-w-0 overflow-x-hidden lg:ml-[240px]">
         <TopHeader
           title={activeItem.label}
           activeKey={safeActiveKey}
@@ -662,7 +672,7 @@ export default function Home({ initialActiveKey = "dashboard" }: { initialActive
           onMarkNotificationRead={markNotificationRead}
           onMarkAllNotificationsRead={markAllNotificationsRead}
         />
-        <main className="px-4 py-5 lg:px-6">
+        <main className="min-w-0 px-4 py-5 lg:px-6">
           {createNotice ? <CreateCompleteNotice notice={createNotice} onClose={() => setCreateNotice(null)} /> : null}
           <ActivePage
             activeKey={safeActiveKey}
@@ -833,7 +843,7 @@ function ActivePage({
     case "dashboard":
       return <DashboardPage onNavigate={onNavigate} createdTasks={createdTasks} createdIssues={createdIssues} myTodos={myTodos} teamsTodos={teamsTodos} departmentOptions={departments} appRole={appRole} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} />;
     case "issues":
-      return <IssuesPage onNavigate={onNavigate} onAddLog={onAddLog} onCreateTask={onCreateTask} onUpdateIssue={onUpdateIssue} onDeleteIssue={onDeleteIssue} onRestoreIssue={onRestoreIssue} createdIssues={createdIssues} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} appRole={appRole} departmentOptions={departments} />;
+      return <IssuesPage onNavigate={onNavigate} onAddLog={onAddLog} onCreateTask={onCreateTask} onUpdateIssue={onUpdateIssue} onDeleteIssue={onDeleteIssue} onRestoreIssue={onRestoreIssue} createdIssues={createdIssues} createdTasks={createdTasks} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} appRole={appRole} departmentOptions={departments} />;
     case "tasks":
       return <TasksPage appRole={appRole} requesterName={requesterName} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} sendbackTasks={sendbackTasks} createdTasks={createdTasks} preferredView={preferredTaskView} approvalReviewerOptions={approvalReviewerOptions} finalApprover={finalApprover} onCreateApproval={onCreateApproval} onUpdateTask={onUpdateTask} onDeleteTask={onDeleteTask} onRestoreTask={onRestoreTask} />;
     case "my_todo":

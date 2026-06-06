@@ -41,5 +41,5 @@ export function ProgressBar({ value, tone = "bg-[#D6001C]" }: { value: number; t
 }
 
 export function PanelCard({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <section className={`rounded-xl border border-slate-200 bg-white shadow-sm ${className}`}>{children}</section>;
+  return <section className={`min-w-0 max-w-full rounded-xl border border-slate-200 bg-white shadow-sm ${className}`}>{children}</section>;
 }

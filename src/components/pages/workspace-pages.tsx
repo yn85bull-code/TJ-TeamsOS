@@ -28,6 +28,7 @@ type NavigateHandler = {
   onUpdateTeamsTodo?: (todo: TeamsTodoEntry) => void;
   onDeleteTeamsTodo?: (todo: TeamsTodoEntry) => void;
   createdIssues?: CreatedIssueEntry[];
+  createdTasks?: CreatedTaskEntry[];
   myTodos?: MyTodoEntry[];
   teamsTodos?: TeamsTodoEntry[];
   currentUserName?: string;
@@ -196,7 +197,7 @@ type ApprovalsPageProps = NavigateHandler & {
   onRecordApproval?: (entry: ApprovalHistoryEntry) => void;
 };
 
-export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, onDeleteIssue, onRestoreIssue, createdIssues = [], currentUserName = "山田 太郎", currentUserId, currentUserDepartment, appRole = "member", departmentOptions = DEFAULT_DEPARTMENTS }: NavigateHandler) {
+export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, onDeleteIssue, onRestoreIssue, createdIssues = [], createdTasks = [], currentUserName = "山田 太郎", currentUserId, currentUserDepartment, appRole = "member", departmentOptions = DEFAULT_DEPARTMENTS }: NavigateHandler) {
   const [actionMessage, setActionMessage] = useState("Projectを選んで、詳細確認・Task化・削除を行えます。");
   const [deletedIssueIds, setDeletedIssueIds] = useState<string[]>([]);
   const [detailIssueId, setDetailIssueId] = useState<string | null>(null);
@@ -206,8 +207,15 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
   const [panelScrollToken, setPanelScrollToken] = useState(0);
   const [responsiblePerson, setResponsiblePerson] = useState("山田 太郎");
   const [assigneePerson, setAssigneePerson] = useState("未選択");
+  const [localProjectTasks, setLocalProjectTasks] = useState<CreatedTaskEntry[]>([]);
   const flowSteps = ["Project登録", "Task振り分け", "担当者が実行", "完了報告", "承認後に完了"];
   const activeCreatedIssues = useMemo(() => createdIssues.filter((issue) => !issue.deletedAt), [createdIssues]);
+  const activeCreatedTasks = useMemo(
+    () => mergeProjectTasks([...localProjectTasks, ...createdTasks]).filter((task) => !task.deletedAt),
+    [createdTasks, localProjectTasks],
+  );
+  const projectTaskInitialRecords = useMemo(() => buildInitialTaskRecords(activeCreatedTasks), [activeCreatedTasks]);
+  const [projectTaskRecords, setProjectTaskRecords] = useState<Record<string, TaskRecord>>(projectTaskInitialRecords);
   const deletedCreatedIssues = useMemo(
     () => createdIssues.filter((issue) => issue.deletedAt && canViewIssueForUser(issue, currentUserName, currentUserId, currentUserDepartment, appRole)),
     [appRole, createdIssues, currentUserDepartment, currentUserId, currentUserName],
@@ -229,6 +237,10 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
   const editPanelRef = useAutoScrollPanel(editIssueId ? `${editIssueId}-${panelScrollToken}` : null);
   const deletePanelRef = useAutoScrollPanel(deleteIssueId ? `${deleteIssueId}-${panelScrollToken}` : null);
   const taskizePanelRef = useAutoScrollPanel(taskizeIssueId ? `${taskizeIssueId}-${panelScrollToken}` : null);
+
+  useEffect(() => {
+    queueMicrotask(() => setProjectTaskRecords(loadLocalTaskRecords(projectTaskInitialRecords)));
+  }, [projectTaskInitialRecords]);
 
   const requestPanelScroll = () => {
     setPanelScrollToken((token) => token + 1);
@@ -268,8 +280,7 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
     const assignees = [responsiblePerson, assigneePerson].filter((person) => person !== "未選択");
     const uniqueAssignees = [...new Set(assignees)];
     const timestamp = formatDateTime(new Date());
-    setActionMessage(`${taskizeIssue.id} をTask化しました。発生日: ${taskizeIssue.createdAt}。担当: ${uniqueAssignees.join(" / ")}。2名選任時は2名とも担当者として運用します。`);
-    onCreateTask?.({
+    const nextTask: CreatedTaskEntry = {
       id: `task-${taskizeIssue.id}`,
       title: taskizeIssue.title,
       projectName: taskizeIssue.department,
@@ -286,7 +297,10 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
       responsiblePerson,
       assigneePerson,
       createdByName: currentUserName,
-    });
+    };
+    setActionMessage(`${taskizeIssue.id} をTask化しました。発生日: ${taskizeIssue.createdAt}。担当: ${uniqueAssignees.join(" / ")}。2名選任時は2名とも担当者として運用します。`);
+    setLocalProjectTasks((tasks) => [nextTask, ...tasks.filter((task) => !isSameProjectTask(task, nextTask))]);
+    onCreateTask?.(nextTask);
     onAddLog?.({
       actor: currentUserName,
       action: `ProjectをTask化。発生日: ${taskizeIssue.createdAt} / 担当責任者: ${responsiblePerson} / 担当者: ${assigneePerson}`,
@@ -294,7 +308,6 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
       time: timestamp,
     });
     setTaskizeIssueId(null);
-    onNavigate?.("tasks");
   };
 
   const openDeleteConfirm = (issueId: string) => {
@@ -367,15 +380,19 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
         </div>
 
         <div className="mt-5 overflow-x-auto">
-          <table className="w-full min-w-[1120px] text-left text-sm">
+          <table className="w-full min-w-[1380px] text-left text-sm">
             <thead className="border-y border-slate-200 bg-slate-50 text-xs text-slate-500">
               <tr>
                 <th className="p-3">ID</th>
                 <th className="p-3">Project</th>
                 <th className="p-3">部門</th>
                 <th className="p-3">登録者</th>
+                <th className="p-3">担当責任者</th>
+                <th className="p-3">担当者</th>
                 <th className="p-3">優先度</th>
-                <th className="p-3">Status</th>
+                <th className="p-3">Project状態</th>
+                <th className="p-3">進捗</th>
+                <th className="p-3">Task状態</th>
                 <th className="p-3">期限</th>
                 <th className="w-[300px] whitespace-nowrap p-3">次の操作</th>
               </tr>
@@ -385,14 +402,35 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
                 const createdIssue = getCreatedIssue(issue);
                 const canEditThisIssue = createdIssue ? canEditCreatedIssue(createdIssue, currentUserName, appRole, currentUserId) : false;
                 const canTaskizeThisIssue = createdIssue ? canEditThisIssue : canViewAllWork(appRole);
+                const linkedTask = getLinkedTaskForIssue(issue, activeCreatedTasks);
+                const linkedRecord = linkedTask ? getTaskRecord(projectTaskRecords, linkedTask) : undefined;
+                const linkedProgress = linkedTask ? clampProgress(linkedRecord?.progress ?? linkedTask.progress) : 0;
+                const linkedTaskStatus = linkedTask ? getTaskStatus(linkedProgress) : undefined;
+                const linkedAssignee = linkedTask ? getTaskAssigneeLabel(linkedTask) : "未Task化";
                 return (
                   <tr key={issue.id} className="border-b border-slate-100 hover:bg-slate-50/70">
                     <td className="p-3 font-mono text-xs text-slate-500">{issue.id}</td>
                     <td className="p-3 font-semibold">{issue.title}</td>
                     <td className="p-3">{issue.department}</td>
                     <td className="p-3">{issue.owner}</td>
+                    <td className="p-3 font-semibold text-slate-700">{linkedTask?.responsiblePerson ?? "未Task化"}</td>
+                    <td className="p-3 font-semibold text-slate-700">{linkedAssignee}</td>
                     <td className="p-3"><IssuePriorityBadge priority={issue.priority} /></td>
                     <td className="p-3"><IssueStatusBadge status={issue.status} /></td>
+                    <td className="p-3">
+                      {linkedTask ? (
+                        <div className="min-w-[150px]">
+                          <div className="mb-1 flex items-center justify-between text-xs font-bold text-slate-600">
+                            <span>進捗</span>
+                            <span>{linkedProgress}%</span>
+                          </div>
+                          <ProgressBar value={linkedProgress} />
+                        </div>
+                      ) : (
+                        <span className="inline-flex whitespace-nowrap rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500 ring-1 ring-slate-200">未Task化</span>
+                      )}
+                    </td>
+                    <td className="p-3">{linkedTaskStatus ? <StatusBadge status={linkedTaskStatus} /> : <span className="inline-flex whitespace-nowrap rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500 ring-1 ring-slate-200">未Task化</span>}</td>
                     <td className="p-3 font-bold text-[#D6001C]">{issue.due}</td>
                     <td className="min-w-[300px] p-3">
                       <div className="flex flex-nowrap gap-2 whitespace-nowrap">
@@ -409,9 +447,15 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
                             編集
                           </button>
                         ) : null}
-                        <button className="inline-flex h-10 min-w-[80px] items-center justify-center whitespace-nowrap rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:text-slate-300" type="button" disabled={!canTaskizeThisIssue} onClick={() => openTaskize(issue.id)}>
-                          Task化
-                        </button>
+                        {linkedTask ? (
+                          <button className="inline-flex h-10 min-w-[80px] items-center justify-center whitespace-nowrap rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C]" type="button" onClick={() => onNavigate?.("tasks")}>
+                            Task確認
+                          </button>
+                        ) : (
+                          <button className="inline-flex h-10 min-w-[80px] items-center justify-center whitespace-nowrap rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:text-slate-300" type="button" disabled={!canTaskizeThisIssue} onClick={() => openTaskize(issue.id)}>
+                            Task化
+                          </button>
+                        )}
                         <button className="inline-flex h-10 min-w-[56px] items-center justify-center whitespace-nowrap rounded-lg bg-slate-800 px-3 text-xs font-bold text-white hover:bg-slate-950 disabled:cursor-not-allowed disabled:bg-slate-300" type="button" disabled={!canDeleteIssues} onClick={() => openDeleteConfirm(issue.id)}>
                           削除
                         </button>
@@ -422,7 +466,7 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
               })}
               {visibleIssues.length === 0 ? (
                 <tr>
-                  <td className="p-6 text-center text-sm text-slate-500" colSpan={8}>表示中のProjectはありません。</td>
+                  <td className="p-6 text-center text-sm text-slate-500" colSpan={12}>表示中のProjectはありません。</td>
                 </tr>
               ) : null}
             </tbody>
@@ -473,6 +517,12 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
       {detailIssue ? (
         <div ref={detailPanelRef} className="scroll-mt-24">
           <PanelCard className="p-5">
+            {(() => {
+              const linkedTask = getLinkedTaskForIssue(detailIssue, activeCreatedTasks);
+              const linkedRecord = linkedTask ? getTaskRecord(projectTaskRecords, linkedTask) : undefined;
+              const linkedProgress = linkedTask ? clampProgress(linkedRecord?.progress ?? linkedTask.progress) : 0;
+              return (
+                <>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-bold text-[#D6001C]">登録内容</p>
@@ -486,9 +536,15 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
               <DetailBox label="Project分類小区分" value={getIssueCategory2(detailIssue)} />
               <DetailBox label="登録者" value={detailIssue.owner} />
               <DetailBox label="登録日時 / 発生日" value={detailIssue.createdAt} />
+              <DetailBox label="担当責任者" value={linkedTask?.responsiblePerson ?? "未Task化"} />
+              <DetailBox label="担当者" value={linkedTask ? getTaskAssigneeLabel(linkedTask) : "未Task化"} />
+              <DetailBox label="進捗" value={linkedTask ? `${linkedProgress}% / ${getTaskStatusLabel(getTaskStatus(linkedProgress))}` : "未Task化"} />
               <DetailBox label="As-Is" value={getIssueAsIsValue(detailIssue)} />
               <DetailBox label="To-Be" value={getIssueToBe(detailIssue)} />
             </div>
+                </>
+              );
+            })()}
           </PanelCard>
         </div>
       ) : null}
@@ -733,6 +789,32 @@ function getCreatedIssue(issue: IssueListEntry) {
 
 function getIssueSupabaseId(issue: IssueListEntry) {
   return "supabaseId" in issue ? issue.supabaseId : undefined;
+}
+
+function getLinkedTaskForIssue(issue: IssueListEntry, tasks: CreatedTaskEntry[]) {
+  const issueSupabaseId = getIssueSupabaseId(issue);
+  return tasks.find((task) => task.sourceIssueId === issue.id || Boolean(issueSupabaseId && task.sourceIssueSupabaseId === issueSupabaseId));
+}
+
+function mergeProjectTasks(tasks: CreatedTaskEntry[]) {
+  const merged = new Map<string, CreatedTaskEntry>();
+  for (const task of tasks) {
+    merged.set(getProjectTaskKey(task), task);
+  }
+  return [...merged.values()];
+}
+
+function isSameProjectTask(left: CreatedTaskEntry, right: CreatedTaskEntry) {
+  return getProjectTaskKey(left) === getProjectTaskKey(right);
+}
+
+function getProjectTaskKey(task: CreatedTaskEntry) {
+  return task.sourceIssueSupabaseId || task.sourceIssueId || task.id;
+}
+
+function getTaskAssigneeLabel(task: CreatedTaskEntry) {
+  if (task.assigneePerson && task.assigneePerson !== "未選択") return task.assigneePerson;
+  return task.assigneeName || "未設定";
 }
 
 function canEditCreatedIssue(issue: CreatedIssueEntry, currentUserName: string, appRole: AppRole, currentUserId?: string) {
@@ -1751,6 +1833,16 @@ function getTaskStatus(progress: number): TaskStatus {
   if (progress >= 90) return "approval_pending";
   if (progress > 0) return "in_progress";
   return "not_started";
+}
+
+function getTaskStatusLabel(status: TaskStatus) {
+  const labels: Record<TaskStatus, string> = {
+    not_started: "未着手",
+    in_progress: "進行中",
+    approval_pending: "承認待ち",
+    done: "完了",
+  };
+  return labels[status];
 }
 
 function clampProgress(value: number) {
