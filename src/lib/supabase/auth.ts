@@ -133,7 +133,7 @@ function readSupabaseRedirectState() {
   const error = hashParams.get("error") ?? queryParams.get("error");
   const errorDescription = hashParams.get("error_description") ?? queryParams.get("error_description");
   const isRedirect = Boolean(accessToken || refreshToken || code || error || queryParams.get("auth") === "invite");
-  const isInvite = type === "invite" || (isRedirect && Boolean(accessToken || code) && !type);
+  const isInvite = type === "invite" || type === "recovery" || (isRedirect && Boolean(accessToken || code) && !type);
 
   return {
     accessToken,
