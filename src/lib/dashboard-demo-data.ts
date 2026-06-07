@@ -63,7 +63,7 @@ export type NotificationSummary = {
 };
 
 export const navItems: NavItem[] = [
-  { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { key: "dashboard", label: "HOME", icon: LayoutDashboard },
   { key: "issues", label: "Project", icon: ClipboardList },
   { key: "tasks", label: "Task", icon: CheckCircle2 },
   { key: "my_todo", label: "MyToDo", icon: ListTodo },

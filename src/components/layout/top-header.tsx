@@ -9,7 +9,7 @@ import { AppRole } from "@/types/database";
 import { useMemo, useState } from "react";
 
 const descriptions: Record<string, string> = {
-  dashboard: "権限に応じて、期限、承認、AI提案、担当タスクの状況を確認します。",
+  dashboard: "カレンダー、今日の予定、担当タスクの進捗をHOMEで確認します。",
   issues: "Projectを親として登録し、Task化と承認申請まで管理します。",
   tasks: "既存の通常タスクをTaskとして管理し、進捗と承認申請の状態を確認します。",
   my_todo: "MyToDoとTeamToDoを分けて管理します。どちらも承認フロー対象外です。",
@@ -25,7 +25,7 @@ const descriptions: Record<string, string> = {
 };
 
 const navLabels: Record<string, string> = {
-  dashboard: "Dashboard",
+  dashboard: "HOME",
   issues: "Project",
   tasks: "Task",
   my_todo: "MyToDo",
@@ -41,6 +41,7 @@ const navLabels: Record<string, string> = {
 };
 
 const searchIndex = [
+  { title: "HOME", subtitle: "カレンダー、今日の予定、担当タスクの進捗", target: "dashboard" },
   { title: "期限超過Task", subtitle: "Taskで期限超過を確認", target: "tasks" },
   { title: "MyToDo", subtitle: "MyToDoとTeamToDoを管理", target: "my_todo" },
   { title: "Calendar", subtitle: "TeamOS基幹の予定管理とGoogle Calendar連携構想", target: "calendar" },
