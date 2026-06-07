@@ -880,9 +880,9 @@ function ActivePage({
     case "my_todo":
       return <MyTodoPage myTodos={myTodos} teamsTodos={teamsTodos} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} appRole={appRole} onCreateMyTodo={onCreateMyTodo} onUpdateMyTodo={onUpdateMyTodo} onDeleteMyTodo={onDeleteMyTodo} onCreateTeamsTodo={onCreateTeamsTodo} onUpdateTeamsTodo={onUpdateTeamsTodo} onDeleteTeamsTodo={onDeleteTeamsTodo} />;
     case "calendar":
-      return <CalendarPage />;
+      return <CalendarPage onNavigate={onNavigate} createdTasks={createdTasks} myTodos={myTodos} teamsTodos={teamsTodos} approvalRequests={approvalRequests} approvalHistory={approvalHistory} resolvedApprovalIds={resolvedApprovalIds} sendbackTasks={sendbackTasks} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} appRole={appRole} />;
     case "workflow":
-      return <WorkflowPage />;
+      return <WorkflowPage currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} appRole={appRole} departmentOptions={departments} />;
     case "approvals":
       return <ApprovalsPage onNavigate={onNavigate} approvalRequests={approvalRequests} resolvedApprovalIds={resolvedApprovalIds} onResolveApproval={onResolveApproval} onReviewApproval={onReviewApproval} onSendBackTask={onSendBackTask} approvalHistory={approvalHistory} onRecordApproval={onRecordApproval} currentUserName={currentUserName} currentUserId={currentUserId} currentUserDepartment={currentUserDepartment} appRole={appRole} />;
     case "teams":

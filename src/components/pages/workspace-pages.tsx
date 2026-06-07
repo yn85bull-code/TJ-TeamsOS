@@ -10,7 +10,7 @@ import { type TeamsTodoEntry } from "@/lib/workspace/teams-todo-store";
 import { DEFAULT_DEPARTMENTS, normalizeDepartmentList } from "@/lib/workspace/department-store";
 import { OPERATIONAL_ROLE_OPTIONS, TeamProfileEntry, demoUsersToProfiles, getRoleLabel, inviteTeamUser, loadTeamProfilesFromSupabase, runTeamUserAuthActionInSupabase, uploadProfileAvatarFileInSupabase, updateProfileDepartmentAndPositionInSupabase, updateProfileEmploymentStatusInSupabase, updateProfileRoleInSupabase } from "@/lib/workspace/profile-store";
 import { AppRole } from "@/types/database";
-import { BookOpen, Bot, Building2, CalendarDays, CheckCircle2, ClipboardList, Clock, Database, FileText, GitBranch, Inbox, ListChecks, LockKeyhole, Pencil, Plus, Save, Search, Send, ShieldCheck, Trash2, Upload, Users, X } from "lucide-react";
+import { BookOpen, Bot, Building2, CalendarDays, CheckCircle2, ClipboardList, Clock, Database, FileText, Inbox, ListChecks, LockKeyhole, Pencil, Plus, Save, Search, Send, ShieldCheck, Trash2, Upload, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 type NavigateHandler = {
@@ -3130,146 +3130,1106 @@ function getRoleDisplayLabel(role: AppRole) {
   return "Member";
 }
 
-const calendarFoundationItems = [
-  {
-    title: "TeamOS予定管理",
-    description: "TeamOSを予定データの正として、個人予定・部門予定・全社予定を管理する土台です。",
-    icon: CalendarDays,
-  },
-  {
-    title: "Google Calendar同期",
-    description: "TeamOSで作成した予定をGoogle Calendarへ同期し、スマホ通知や外部共有に使う構想です。",
-    icon: Clock,
-  },
-  {
-    title: "業務連動",
-    description: "Project、Task、MyToDo、Workflowと予定を紐づけ、作業予定と締切を一体で確認します。",
-    icon: Database,
-  },
-];
+type CalendarPageProps = NavigateHandler & {
+  approvalRequests?: ApprovalRequestEntry[];
+  approvalHistory?: ApprovalHistoryEntry[];
+  resolvedApprovalIds?: string[];
+  sendbackTasks?: SendbackTaskEntry[];
+};
 
-const workflowFoundationItems = [
-  {
-    title: "申請フォーム",
-    description: "稟議、購入、契約、社内確認など、申請種別ごとのフォームをTeamOS内に持たせます。",
-    icon: FileText,
-  },
-  {
-    title: "複数承認ルート",
-    description: "内容、金額、部門、添付有無に応じて、Manager確認、Admin承認、Owner最終決裁へ分岐します。",
-    icon: GitBranch,
-  },
-  {
-    title: "添付と履歴",
-    description: "添付ファイル、差し戻し理由、承認コメント、監査ログを履歴として残します。",
-    icon: ShieldCheck,
-  },
-];
+type CalendarItemKind = "task" | "my_todo" | "team_todo" | "approval" | "sendback" | "approved";
 
-export function CalendarPage() {
-  const previewDays = ["月", "火", "水", "木", "金"];
+type CalendarItem = {
+  id: string;
+  kind: CalendarItemKind;
+  title: string;
+  dateKey: string;
+  primaryMeta: string;
+  secondaryMeta: string;
+  routeKey: string;
+  description?: string;
+  progress?: number;
+  taskStatus?: TaskStatus;
+  taskPriority?: TaskPriority;
+  todoStatus?: MyTodoStatus;
+  todoPriority?: MyTodoPriority;
+  overdue?: boolean;
+};
+
+const calendarWeekdays = ["日", "月", "火", "水", "木", "金", "土"];
+
+const calendarKindConfig: Record<CalendarItemKind, { label: string; className: string; dotClassName: string }> = {
+  task: { label: "Task", className: "bg-red-50 text-red-700 ring-red-200", dotClassName: "bg-[#D6001C]" },
+  my_todo: { label: "MyToDo", className: "bg-blue-50 text-blue-700 ring-blue-200", dotClassName: "bg-blue-500" },
+  team_todo: { label: "TeamToDo", className: "bg-emerald-50 text-emerald-700 ring-emerald-200", dotClassName: "bg-emerald-500" },
+  approval: { label: "承認待ち", className: "bg-orange-50 text-orange-700 ring-orange-200", dotClassName: "bg-orange-500" },
+  sendback: { label: "差し戻し", className: "bg-purple-50 text-purple-700 ring-purple-200", dotClassName: "bg-purple-500" },
+  approved: { label: "承認済み", className: "bg-slate-100 text-slate-700 ring-slate-200", dotClassName: "bg-slate-400" },
+};
+
+export function CalendarPage({
+  onNavigate,
+  createdTasks = [],
+  myTodos = [],
+  teamsTodos = [],
+  approvalRequests = [],
+  approvalHistory = [],
+  resolvedApprovalIds = [],
+  sendbackTasks = [],
+  currentUserName = "山田 太郎",
+  currentUserId,
+  currentUserDepartment,
+  appRole = "member",
+}: CalendarPageProps) {
+  const todayKey = formatDateKeyFromDate(new Date());
+  const [cursorDate, setCursorDate] = useState(() => new Date());
+  const [selectedDateKey, setSelectedDateKey] = useState(todayKey);
+  const monthCells = useMemo(() => buildCalendarMonthCells(cursorDate), [cursorDate]);
+  const calendarItems = useMemo(
+    () => buildCalendarItems({
+      createdTasks,
+      myTodos,
+      teamsTodos,
+      approvalRequests,
+      approvalHistory,
+      resolvedApprovalIds,
+      sendbackTasks,
+      currentUserName,
+      currentUserId,
+      currentUserDepartment,
+      appRole,
+    }),
+    [createdTasks, myTodos, teamsTodos, approvalRequests, approvalHistory, resolvedApprovalIds, sendbackTasks, currentUserName, currentUserId, currentUserDepartment, appRole],
+  );
+  const itemsByDate = useMemo(() => groupCalendarItemsByDate(calendarItems), [calendarItems]);
+  const selectedItems = itemsByDate.get(selectedDateKey) ?? [];
+  const monthLabel = `${cursorDate.getFullYear()}年 ${cursorDate.getMonth() + 1}月`;
+  const monthItems = calendarItems.filter((item) => item.dateKey.startsWith(`${cursorDate.getFullYear()}-${String(cursorDate.getMonth() + 1).padStart(2, "0")}`));
+  const monthStats = getCalendarStats(monthItems);
 
   return (
-    <PageFrame title="Calendar" lead="TeamOSを基幹にした社内予定管理の土台です。Google Calendar連携は今後実装予定です。">
-      <PanelCard className="p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-blue-700">今後実装予定</span>
-            <h3 className="mt-4 text-xl font-black text-slate-950">TeamOS Calendar Foundation</h3>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-              予定の登録元はTeamOSに置き、Google Calendarには通知・スマホ表示・外部共有用として同期する方針です。
+    <PageFrame title="Calendar" lead="ログインユーザー本人に関係するTask、MyToDo、TeamToDo、承認予定だけを月表示で確認します。">
+      <div className="grid gap-4 xl:grid-cols-4">
+        <PanelCard className="p-5 xl:col-span-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-black text-slate-500">表示対象</p>
+              <h3 className="mt-1 text-xl font-black text-slate-950">{monthLabel}</h3>
+              <p className="mt-1 text-sm text-slate-500">本人担当、本人登録、配布ToDo、関係する承認だけを集計しています。</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C]" type="button" onClick={() => setCursorDate(new Date(cursorDate.getFullYear(), cursorDate.getMonth() - 1, 1))}>
+                前月
+              </button>
+              <button className="h-10 rounded-lg bg-slate-100 px-4 text-sm font-bold text-slate-700 hover:bg-slate-200" type="button" onClick={() => {
+                const now = new Date();
+                setCursorDate(now);
+                setSelectedDateKey(formatDateKeyFromDate(now));
+              }}>
+                今月
+              </button>
+              <button className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C]" type="button" onClick={() => setCursorDate(new Date(cursorDate.getFullYear(), cursorDate.getMonth() + 1, 1))}>
+                次月
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-7 overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+            {calendarWeekdays.map((weekday) => (
+              <div key={weekday} className="border-b border-slate-200 px-2 py-2 text-center text-xs font-black text-slate-500">
+                {weekday}
+              </div>
+            ))}
+            {monthCells.map((cell) => {
+              const cellItems = itemsByDate.get(cell.dateKey) ?? [];
+              const cellStats = getCalendarStats(cellItems);
+              return (
+                <button
+                  key={cell.dateKey}
+                  className={`min-h-36 border-b border-r border-slate-200 bg-white p-2 text-left transition hover:bg-red-50/30 ${cell.inCurrentMonth ? "" : "bg-slate-50 text-slate-400"} ${selectedDateKey === cell.dateKey ? "ring-2 ring-inset ring-[#D6001C]" : ""}`}
+                  type="button"
+                  onClick={() => setSelectedDateKey(cell.dateKey)}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`grid size-7 place-items-center rounded-full text-xs font-black ${cell.dateKey === todayKey ? "bg-[#D6001C] text-white" : "text-slate-700"}`}>{cell.day}</span>
+                    {cellItems.length ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-black text-slate-600">{cellItems.length}件</span> : null}
+                  </div>
+                  {cellItems.length ? (
+                    <div className="mt-2 grid gap-1">
+                      {cellStats.overdue ? <span className="rounded bg-red-50 px-2 py-1 text-[11px] font-black text-red-700">期限超過 {cellStats.overdue}</span> : null}
+                      {cellStats.task ? <span className="rounded bg-red-50 px-2 py-1 text-[11px] font-black text-red-700">Task {cellStats.task}</span> : null}
+                      {cellStats.todo ? <span className="rounded bg-blue-50 px-2 py-1 text-[11px] font-black text-blue-700">ToDo {cellStats.todo}</span> : null}
+                      {cellStats.approval ? <span className="rounded bg-orange-50 px-2 py-1 text-[11px] font-black text-orange-700">承認 {cellStats.approval}</span> : null}
+                      {cellStats.sendback ? <span className="rounded bg-purple-50 px-2 py-1 text-[11px] font-black text-purple-700">差戻 {cellStats.sendback}</span> : null}
+                    </div>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </PanelCard>
+
+        <PanelCard className="p-5">
+          <h3 className="font-black text-slate-950">今月の集計</h3>
+          <div className="mt-4 grid gap-3">
+            <CalendarStat label="全予定" value={monthItems.length} />
+            <CalendarStat label="Task" value={monthStats.task} />
+            <CalendarStat label="ToDo" value={monthStats.todo} />
+            <CalendarStat label="承認/差戻" value={monthStats.approval + monthStats.sendback} />
+            <CalendarStat label="期限超過" value={monthStats.overdue} tone="danger" />
+          </div>
+          <div className="mt-5 rounded-lg bg-slate-50 p-4">
+            <p className="text-xs font-black text-slate-500">権限制御</p>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              CalendarはTask/Approvalと同じ判定を使い、本人・所属・承認担当の範囲外は表示しません。
             </p>
           </div>
-          <span className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-black text-slate-600">Phase 2</span>
-        </div>
-      </PanelCard>
-
-      <div className="grid gap-4 xl:grid-cols-3">
-        {calendarFoundationItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <PanelCard key={item.title} className="p-5">
-              <div className="grid size-10 place-items-center rounded-lg bg-red-50 text-[#D6001C]">
-                <Icon size={19} />
-              </div>
-              <h3 className="mt-4 font-black text-slate-950">{item.title}</h3>
-              <p className="mt-2 text-sm leading-6 text-slate-500">{item.description}</p>
-            </PanelCard>
-          );
-        })}
+        </PanelCard>
       </div>
 
       <PanelCard className="p-5">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="font-black text-slate-950">週間予定プレビュー</h3>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500">表示サンプル</span>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="font-black text-slate-950">{formatCalendarDateLabel(selectedDateKey)} の詳細</h3>
+            <p className="mt-1 text-sm text-slate-500">日付または予定を選ぶと、関連情報と移動先を確認できます。</p>
+          </div>
+          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">{selectedItems.length}件</span>
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-5">
-          {previewDays.map((day, index) => (
-            <div key={day} className="min-h-32 rounded-lg border border-slate-200 bg-slate-50 p-3">
-              <p className="text-xs font-black text-slate-500">{day}</p>
-              <div className="mt-3 rounded-lg bg-white p-3 shadow-sm">
-                <p className="text-xs font-bold text-[#D6001C]">{index % 2 === 0 ? "社内予定" : "部門予定"}</p>
-                <p className="mt-1 text-sm font-bold text-slate-900">{index % 2 === 0 ? "朝会・共有" : "商談/面談枠"}</p>
-              </div>
-            </div>
-          ))}
-        </div>
+
+        {selectedItems.length ? (
+          <div className="mt-4 grid gap-3 xl:grid-cols-2">
+            {selectedItems.map((item) => {
+              const config = calendarKindConfig[item.kind];
+              return (
+                <div key={`${item.kind}-${item.id}`} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-black ring-1 ${config.className}`}>{config.label}</span>
+                      <h4 className="mt-3 break-words font-black text-slate-950">{item.title}</h4>
+                      <p className="mt-2 text-sm text-slate-500">{item.primaryMeta}</p>
+                      <p className="mt-1 text-xs font-bold text-slate-500">{item.secondaryMeta}</p>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                      {item.taskPriority ? <PriorityBadge priority={item.taskPriority} /> : null}
+                      {item.taskStatus ? <StatusBadge status={item.taskStatus} /> : null}
+                      {item.todoPriority ? <MyTodoPriorityBadge priority={item.todoPriority} /> : null}
+                      {item.todoStatus ? <MyTodoStatusBadge status={item.todoStatus} /> : null}
+                    </div>
+                  </div>
+                  {typeof item.progress === "number" ? (
+                    <div className="mt-4">
+                      <div className="flex items-center justify-between text-xs font-bold text-slate-500">
+                        <span>進捗</span>
+                        <span>{item.progress}%</span>
+                      </div>
+                      <div className="mt-2">
+                        <ProgressBar value={item.progress} />
+                      </div>
+                    </div>
+                  ) : null}
+                  {item.description ? <p className="mt-4 rounded-lg bg-slate-50 p-3 text-sm leading-6 text-slate-600">{item.description}</p> : null}
+                  <button className="mt-4 h-10 rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white hover:bg-red-700" type="button" onClick={() => onNavigate?.(item.routeKey)}>
+                    関連ページへ移動
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="mt-4 rounded-lg border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
+            <h3 className="font-bold text-slate-900">この日の本人関連予定はありません</h3>
+            <p className="mt-2 text-sm text-slate-500">Task、MyToDo、TeamToDo、承認予定が入るとここに表示されます。</p>
+          </div>
+        )}
       </PanelCard>
     </PageFrame>
   );
 }
 
-export function WorkflowPage() {
-  const routeSteps = ["申請", "Manager確認", "Admin承認", "Owner最終決裁", "履歴化"];
+function CalendarStat({ label, value, tone = "default" }: { label: string; value: number; tone?: "default" | "danger" }) {
+  return (
+    <div className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2">
+      <span className="text-sm font-bold text-slate-600">{label}</span>
+      <span className={`text-lg font-black ${tone === "danger" ? "text-[#D6001C]" : "text-slate-950"}`}>{value}</span>
+    </div>
+  );
+}
+
+function buildCalendarItems({
+  createdTasks,
+  myTodos,
+  teamsTodos,
+  approvalRequests,
+  approvalHistory,
+  resolvedApprovalIds,
+  sendbackTasks,
+  currentUserName,
+  currentUserId,
+  currentUserDepartment,
+  appRole,
+}: Required<Pick<CalendarPageProps, "createdTasks" | "myTodos" | "teamsTodos" | "approvalRequests" | "approvalHistory" | "resolvedApprovalIds" | "sendbackTasks" | "currentUserName" | "appRole">> & Pick<CalendarPageProps, "currentUserId" | "currentUserDepartment">) {
+  const activeCreatedTasks = mergeProjectTasks(createdTasks).filter((task) => !task.deletedAt);
+  const taskItems = [...myTasks, ...activeCreatedTasks]
+    .filter((task) => isCalendarTaskRelatedToCurrentUser(task, currentUserName, currentUserId, currentUserDepartment, appRole))
+    .map((task) => taskToCalendarItem(task))
+    .filter(isCalendarItem);
+  const sendbackItems = sendbackTasks
+    .filter((task) => isCalendarTaskRelatedToCurrentUser(task, currentUserName, currentUserId, currentUserDepartment, appRole))
+    .map((task) => sendbackTaskToCalendarItem(task))
+    .filter(isCalendarItem);
+  const myTodoItems = sortMyTodos(myTodos)
+    .filter((todo) => !todo.deletedAt && isCalendarMyTodoRelatedToCurrentUser(todo, currentUserName, currentUserId))
+    .map((todo) => myTodoToCalendarItem(todo))
+    .filter(isCalendarItem);
+  const teamTodoItems = sortTeamsTodos(teamsTodos)
+    .filter((todo) => !todo.deletedAt && isCalendarTeamsTodoRelatedToCurrentUser(todo, currentUserName, currentUserId, currentUserDepartment, appRole))
+    .map((todo) => teamsTodoToCalendarItem(todo))
+    .filter(isCalendarItem);
+  const approvalItems = approvalRequests
+    .filter((approval) => !resolvedApprovalIds.includes(approval.id))
+    .filter((approval) => canViewApprovalForUser(approval, currentUserId, currentUserName, currentUserDepartment, appRole))
+    .map((approval) => approvalToCalendarItem(approval))
+    .filter(isCalendarItem);
+  const approvedItems = approvalHistory
+    .filter((approval) => canViewApprovalHistoryForUser(approval, currentUserName, appRole))
+    .map((approval) => approvalHistoryToCalendarItem(approval))
+    .filter(isCalendarItem);
+
+  return [...taskItems, ...sendbackItems, ...myTodoItems, ...teamTodoItems, ...approvalItems, ...approvedItems]
+    .sort((left, right) => left.dateKey.localeCompare(right.dateKey) || getCalendarKindRank(left.kind) - getCalendarKindRank(right.kind));
+}
+
+function taskToCalendarItem(task: TaskSummary | CreatedTaskEntry): CalendarItem | null {
+  const dateKey = parseCalendarDateKey(task.dueDate);
+  if (!dateKey) return null;
+  const createdBy = "createdByName" in task && task.createdByName ? ` / 登録者: ${task.createdByName}` : "";
+  return {
+    id: task.id,
+    kind: "task",
+    title: task.title,
+    dateKey,
+    primaryMeta: `${task.projectName} / 担当: ${getCalendarTaskAssigneeLabel(task)}${createdBy}`,
+    secondaryMeta: `期限 ${formatCalendarDateLabel(dateKey)}`,
+    routeKey: "tasks",
+    description: "Taskの進捗、ToDoメモ、承認申請はTaskページで更新できます。",
+    progress: clampProgress(task.progress),
+    taskStatus: task.status,
+    taskPriority: task.priority,
+    overdue: isCalendarDateOverdue(dateKey, task.status === "done"),
+  };
+}
+
+function sendbackTaskToCalendarItem(task: SendbackTaskEntry): CalendarItem | null {
+  const dateKey = parseCalendarDateKey(task.dueDate);
+  if (!dateKey) return null;
+  return {
+    id: task.id,
+    kind: "sendback",
+    title: task.title,
+    dateKey,
+    primaryMeta: `${task.projectName} / 担当: ${getCalendarTaskAssigneeLabel(task)}`,
+    secondaryMeta: `差し戻し日時 ${task.sentBackAt}`,
+    routeKey: "tasks",
+    description: task.sendbackReason,
+    progress: clampProgress(task.progress),
+    taskStatus: task.status,
+    taskPriority: task.priority,
+    overdue: isCalendarDateOverdue(dateKey, task.status === "done"),
+  };
+}
+
+function myTodoToCalendarItem(todo: MyTodoEntry): CalendarItem | null {
+  const dateKey = parseCalendarDateKey(todo.dueDate);
+  if (!dateKey) return null;
+  return {
+    id: todo.id,
+    kind: "my_todo",
+    title: todo.title,
+    dateKey,
+    primaryMeta: `MyToDo / 登録者: ${todo.createdByName}`,
+    secondaryMeta: `期限 ${formatCalendarDateLabel(dateKey)}`,
+    routeKey: "my_todo",
+    description: todo.memo,
+    todoStatus: todo.status,
+    todoPriority: todo.priority,
+    overdue: isCalendarDateOverdue(dateKey, todo.status === "done"),
+  };
+}
+
+function teamsTodoToCalendarItem(todo: TeamsTodoEntry): CalendarItem | null {
+  const dateKey = parseCalendarDateKey(todo.dueDate);
+  if (!dateKey) return null;
+  return {
+    id: todo.id,
+    kind: "team_todo",
+    title: todo.title,
+    dateKey,
+    primaryMeta: `${todo.targetOrganization} / 担当: ${todo.assigneeName ?? "未指名"}`,
+    secondaryMeta: `配布元: ${todo.createdByName}`,
+    routeKey: "my_todo",
+    description: todo.memo,
+    todoStatus: todo.status,
+    todoPriority: todo.priority,
+    overdue: isCalendarDateOverdue(dateKey, todo.status === "done"),
+  };
+}
+
+function approvalToCalendarItem(approval: ApprovalRequestEntry): CalendarItem | null {
+  const dateKey = parseCalendarDateKey(approval.dueDate);
+  if (!dateKey) return null;
+  return {
+    id: approval.id,
+    kind: "approval",
+    title: approval.target,
+    dateKey,
+    primaryMeta: `申請者: ${approval.requester} / 確認: ${approval.reviewerName ?? "未設定"}`,
+    secondaryMeta: `最終決裁: ${approval.finalApproverName ?? "Owner"} / 期限 ${formatCalendarDateLabel(dateKey)}`,
+    routeKey: "approvals",
+    description: approval.body,
+    taskPriority: approval.priority,
+    overdue: isCalendarDateOverdue(dateKey, false),
+  };
+}
+
+function approvalHistoryToCalendarItem(approval: ApprovalHistoryEntry): CalendarItem | null {
+  const dateKey = parseCalendarDateKey(approval.approvedAt);
+  if (!dateKey) return null;
+  return {
+    id: approval.id,
+    kind: "approved",
+    title: approval.target,
+    dateKey,
+    primaryMeta: `申請者: ${approval.requester} / 承認者: ${approval.approvedBy}`,
+    secondaryMeta: `承認日時 ${approval.approvedAt}`,
+    routeKey: "approvals",
+    description: approval.comment,
+  };
+}
+
+function isCalendarItem(item: CalendarItem | null): item is CalendarItem {
+  return Boolean(item);
+}
+
+function isCalendarTaskRelatedToCurrentUser(task: TaskSummary | CreatedTaskEntry | SendbackTaskEntry, currentUserName: string, currentUserId: string | undefined, currentUserDepartment: string | undefined, appRole: AppRole) {
+  if (isTaskRelatedToCurrentUser(task, currentUserName, currentUserId)) return true;
+  return canViewDepartmentWork(appRole) && isSameDepartmentLabel(task.projectName, currentUserDepartment);
+}
+
+function isCalendarMyTodoRelatedToCurrentUser(todo: MyTodoEntry, currentUserName: string, currentUserId?: string) {
+  if (currentUserId && todo.userId === currentUserId) return true;
+  return isSamePersonName(todo.createdByName, currentUserName);
+}
+
+function isCalendarTeamsTodoRelatedToCurrentUser(todo: TeamsTodoEntry, currentUserName: string, currentUserId: string | undefined, currentUserDepartment: string | undefined, appRole: AppRole) {
+  if (currentUserId && [todo.assigneeId, todo.createdById].includes(currentUserId)) return true;
+  if ([todo.assigneeName, todo.createdByName].some((name) => isSamePersonName(name, currentUserName))) return true;
+  return canViewDepartmentWork(appRole) && isSameDepartmentLabel(todo.targetOrganization, currentUserDepartment);
+}
+
+function getCalendarTaskAssigneeLabel(task: TaskSummary | CreatedTaskEntry | SendbackTaskEntry) {
+  if ("assigneePerson" in task && task.assigneePerson && task.assigneePerson !== "未選択") return task.assigneePerson;
+  return task.assigneeName || "未設定";
+}
+
+function getCalendarKindRank(kind: CalendarItemKind) {
+  const rank: Record<CalendarItemKind, number> = {
+    sendback: 1,
+    approval: 2,
+    task: 3,
+    team_todo: 4,
+    my_todo: 5,
+    approved: 6,
+  };
+  return rank[kind];
+}
+
+function groupCalendarItemsByDate(items: CalendarItem[]) {
+  return items.reduce((map, item) => {
+    const current = map.get(item.dateKey) ?? [];
+    current.push(item);
+    map.set(item.dateKey, current);
+    return map;
+  }, new Map<string, CalendarItem[]>());
+}
+
+function getCalendarStats(items: CalendarItem[]) {
+  return items.reduce(
+    (stats, item) => {
+      if (item.kind === "task") stats.task += 1;
+      if (item.kind === "my_todo" || item.kind === "team_todo") stats.todo += 1;
+      if (item.kind === "approval" || item.kind === "approved") stats.approval += 1;
+      if (item.kind === "sendback") stats.sendback += 1;
+      if (item.overdue) stats.overdue += 1;
+      return stats;
+    },
+    { task: 0, todo: 0, approval: 0, sendback: 0, overdue: 0 },
+  );
+}
+
+function buildCalendarMonthCells(cursorDate: Date) {
+  const year = cursorDate.getFullYear();
+  const month = cursorDate.getMonth();
+  const firstDay = new Date(year, month, 1);
+  const startDate = new Date(year, month, 1 - firstDay.getDay());
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(startDate);
+    date.setDate(startDate.getDate() + index);
+    return {
+      dateKey: formatDateKeyFromDate(date),
+      day: date.getDate(),
+      inCurrentMonth: date.getMonth() === month,
+    };
+  });
+}
+
+function formatDateKeyFromDate(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function parseCalendarDateKey(value: string | undefined) {
+  if (!value) return undefined;
+  const normalized = value.normalize("NFKC").trim();
+  const isoDate = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (isoDate) return `${isoDate[1]}-${padDatePart(isoDate[2])}-${padDatePart(isoDate[3])}`;
+  const yearSlashDate = normalized.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+  if (yearSlashDate) return `${yearSlashDate[1]}-${padDatePart(yearSlashDate[2])}-${padDatePart(yearSlashDate[3])}`;
+  const slashDate = normalized.match(/^(\d{1,2})\/(\d{1,2})/);
+  if (slashDate) return `${new Date().getFullYear()}-${padDatePart(slashDate[1])}-${padDatePart(slashDate[2])}`;
+  return undefined;
+}
+
+function formatCalendarDateLabel(dateKey: string) {
+  const [year, month, day] = dateKey.split("-");
+  if (!year || !month || !day) return dateKey;
+  return `${year}/${month}/${day}`;
+}
+
+function isCalendarDateOverdue(dateKey: string, done: boolean) {
+  if (done) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(`${dateKey}T00:00:00`);
+  return Number.isFinite(target.getTime()) && target.getTime() < today.getTime();
+}
+
+type WorkflowPageProps = NavigateHandler;
+
+type WorkflowStatus =
+  | "draft"
+  | "submitted"
+  | "manager_wait"
+  | "confirmed"
+  | "approval_wait"
+  | "sendback"
+  | "resubmit"
+  | "approved"
+  | "rejected"
+  | "cancelled"
+  | "completed";
+
+type WorkflowFieldType = "text" | "textarea" | "number" | "currency" | "date" | "select" | "multi_select" | "checkbox" | "file" | "url" | "employee" | "department" | "store";
+
+type WorkflowTemplateField = {
+  id: string;
+  label: string;
+  type: WorkflowFieldType;
+  required?: boolean;
+  options?: string[];
+};
+
+type WorkflowTemplate = {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  fields: WorkflowTemplateField[];
+  updatedAt: string;
+  deletedAt?: string;
+};
+
+type WorkflowHistoryEntry = {
+  at: string;
+  actor: string;
+  action: string;
+  comment?: string;
+};
+
+type WorkflowRequestEntry = {
+  id: string;
+  templateId: string;
+  templateName: string;
+  title: string;
+  body: string;
+  amount?: string;
+  dueDate?: string;
+  applicantId?: string;
+  applicantName: string;
+  department?: string;
+  managerName?: string;
+  finalApproverName?: string;
+  status: WorkflowStatus;
+  createdAt: string;
+  updatedAt: string;
+  submittedAt?: string;
+  history: WorkflowHistoryEntry[];
+};
+
+type WorkflowAction = {
+  requestId: string;
+  mode: "confirm" | "approve" | "sendback" | "reject" | "complete";
+} | null;
+
+const WORKFLOW_REQUESTS_STORAGE_KEY = "tauros-teamos.workflow-requests.v1";
+const WORKFLOW_TEMPLATES_STORAGE_KEY = "tauros-teamos.workflow-templates.v1";
+
+const defaultWorkflowTemplates: WorkflowTemplate[] = [
+  createDefaultWorkflowTemplate("expense", "経費申請", "精算", "交通費、備品代、立替金の精算申請"),
+  createDefaultWorkflowTemplate("equipment", "備品購入", "購買", "PC、携帯、備品、車両用品などの購入申請"),
+  createDefaultWorkflowTemplate("paid_leave", "有給申請", "勤怠", "休暇取得、振替、勤務調整の申請"),
+  createDefaultWorkflowTemplate("vehicle", "車両利用", "車両", "社用車、代車、搬送、引取予定の利用申請"),
+  createDefaultWorkflowTemplate("repair", "修理依頼", "設備", "店舗設備、PC、端末、車両の修理依頼"),
+  createDefaultWorkflowTemplate("account", "PC/アカウント対応", "情シス", "アカウント発行、権限、端末トラブルの依頼"),
+  createDefaultWorkflowTemplate("contract", "契約確認", "法務", "契約書、覚書、取引条件の確認依頼"),
+  createDefaultWorkflowTemplate("complaint", "クレーム/事故報告", "リスク", "クレーム、事故、重大トラブルの報告"),
+  createDefaultWorkflowTemplate("payment", "支払依頼", "経理", "請求書、支払予定、振込依頼の承認申請"),
+];
+
+const workflowStatusMeta: Record<WorkflowStatus, { label: string; className: string }> = {
+  draft: { label: "下書き", className: "bg-slate-100 text-slate-700 ring-slate-200" },
+  submitted: { label: "申請中", className: "bg-blue-50 text-blue-700 ring-blue-200" },
+  manager_wait: { label: "Manager確認待ち", className: "bg-orange-50 text-orange-700 ring-orange-200" },
+  confirmed: { label: "確認済み", className: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
+  approval_wait: { label: "最終承認待ち", className: "bg-purple-50 text-purple-700 ring-purple-200" },
+  sendback: { label: "差し戻し", className: "bg-red-50 text-red-700 ring-red-200" },
+  resubmit: { label: "再申請", className: "bg-blue-50 text-blue-700 ring-blue-200" },
+  approved: { label: "承認済み", className: "bg-emerald-50 text-emerald-700 ring-emerald-200" },
+  rejected: { label: "却下", className: "bg-slate-900 text-white ring-slate-900" },
+  cancelled: { label: "取消", className: "bg-slate-100 text-slate-500 ring-slate-200" },
+  completed: { label: "完了", className: "bg-emerald-100 text-emerald-800 ring-emerald-200" },
+};
+
+export function WorkflowPage({
+  currentUserName = "山田 太郎",
+  currentUserId,
+  currentUserDepartment = "営業部",
+  appRole = "member",
+  departmentOptions = DEFAULT_DEPARTMENTS,
+}: WorkflowPageProps) {
+  const [templates, setTemplates] = useState<WorkflowTemplate[]>(() => loadWorkflowList(WORKFLOW_TEMPLATES_STORAGE_KEY, defaultWorkflowTemplates));
+  const [requests, setRequests] = useState<WorkflowRequestEntry[]>(() => loadWorkflowList(WORKFLOW_REQUESTS_STORAGE_KEY, []));
+  const activeTemplates = templates.filter((template) => !template.deletedAt);
+  const [selectedTemplateId, setSelectedTemplateId] = useState(defaultWorkflowTemplates[0].id);
+  const selectedTemplate = activeTemplates.find((template) => template.id === selectedTemplateId) ?? activeTemplates[0];
+  const [draft, setDraft] = useState(() => ({ title: "", body: "", amount: "", dueDate: "", department: currentUserDepartment }));
+  const [templateDraft, setTemplateDraft] = useState({ id: "", name: "", category: "", description: "" });
+  const [activeWorkflowAction, setActiveWorkflowAction] = useState<WorkflowAction>(null);
+  const [actionMessage, setActionMessage] = useState("申請を作成し、Manager確認からOwner/Admin最終承認まで履歴を残します。");
+  const canManageWorkflow = can(appRole, "workflow", "manage");
+  const workflowDepartmentOptions = normalizeDepartmentList(departmentOptions.length ? departmentOptions : DEFAULT_DEPARTMENTS);
+  const visibleRequests = requests
+    .filter((request) => canViewWorkflowRequest(request, currentUserName, currentUserId, currentUserDepartment, appRole))
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  const workflowStats = getWorkflowStats(visibleRequests);
+  const activeRequest = activeWorkflowAction ? visibleRequests.find((request) => request.id === activeWorkflowAction.requestId) : undefined;
+  const workflowActionPanelRef = useAutoScrollPanel(activeWorkflowAction ? `${activeWorkflowAction.requestId}-${activeWorkflowAction.mode}` : null);
+
+  useEffect(() => {
+    saveWorkflowList(WORKFLOW_TEMPLATES_STORAGE_KEY, templates);
+  }, [templates]);
+
+  useEffect(() => {
+    saveWorkflowList(WORKFLOW_REQUESTS_STORAGE_KEY, requests);
+  }, [requests]);
+
+  const submitWorkflow = () => {
+    if (!selectedTemplate || !draft.title.trim() || !draft.body.trim()) return;
+    const now = new Date();
+    const timestamp = formatDateTime(now);
+    const timestampKey = formatWorkflowIdKey(now);
+    const nextStatus: WorkflowStatus = canDirectWorkflowFinalApprove(appRole) ? "approval_wait" : "manager_wait";
+    const request: WorkflowRequestEntry = {
+      id: `WF-${timestampKey}`,
+      templateId: selectedTemplate.id,
+      templateName: selectedTemplate.name,
+      title: draft.title.trim(),
+      body: draft.body.trim(),
+      amount: draft.amount.trim() || undefined,
+      dueDate: draft.dueDate || undefined,
+      applicantId: currentUserId,
+      applicantName: currentUserName,
+      department: draft.department || currentUserDepartment,
+      managerName: draft.department ? `${draft.department} Manager` : "Manager",
+      finalApproverName: "Owner/Admin",
+      status: nextStatus,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      submittedAt: timestamp,
+      history: [
+        { at: timestamp, actor: currentUserName, action: "申請を作成" },
+        { at: timestamp, actor: currentUserName, action: nextStatus === "approval_wait" ? "最終承認待ちへ送信" : "Manager確認待ちへ送信" },
+      ],
+    };
+    setRequests((items) => [request, ...items]);
+    setDraft({ title: "", body: "", amount: "", dueDate: "", department: currentUserDepartment });
+    setActionMessage(`${request.id} を申請しました。`);
+  };
+
+  const saveTemplate = () => {
+    if (!templateDraft.name.trim() || !templateDraft.category.trim()) return;
+    const now = new Date();
+    const timestamp = formatDateTime(now);
+    if (templateDraft.id) {
+      setTemplates((items) => items.map((template) => template.id === templateDraft.id ? {
+        ...template,
+        name: templateDraft.name.trim(),
+        category: templateDraft.category.trim(),
+        description: templateDraft.description.trim() || template.description,
+        updatedAt: timestamp,
+      } : template));
+      setActionMessage(`${templateDraft.name.trim()} テンプレートを更新しました。`);
+    } else {
+      const template = createDefaultWorkflowTemplate(`custom-${formatWorkflowIdKey(now)}`, templateDraft.name.trim(), templateDraft.category.trim(), templateDraft.description.trim() || "管理者が追加した申請テンプレート");
+      setTemplates((items) => [{ ...template, updatedAt: timestamp }, ...items]);
+      setSelectedTemplateId(template.id);
+      setActionMessage(`${template.name} テンプレートを追加しました。`);
+    }
+    setTemplateDraft({ id: "", name: "", category: "", description: "" });
+  };
+
+  const deleteTemplate = (template: WorkflowTemplate) => {
+    const timestamp = formatDateTime(new Date());
+    setTemplates((items) => items.map((item) => item.id === template.id ? { ...item, deletedAt: timestamp, updatedAt: timestamp } : item));
+    setActionMessage(`${template.name} テンプレートを削除履歴付きで停止しました。`);
+  };
+
+  const completeWorkflowAction = (comment: string) => {
+    if (!activeWorkflowAction || !activeRequest) return;
+    const timestamp = formatDateTime(new Date());
+    const nextStatus = getNextWorkflowStatus(activeWorkflowAction.mode);
+    setRequests((items) => items.map((request) => request.id === activeRequest.id ? {
+      ...request,
+      status: nextStatus,
+      updatedAt: timestamp,
+      history: [
+        { at: timestamp, actor: currentUserName, action: getWorkflowActionLabel(activeWorkflowAction.mode), comment },
+        ...request.history,
+      ],
+    } : request));
+    setActionMessage(`${activeRequest.id} を ${workflowStatusMeta[nextStatus].label} に更新しました。`);
+    setActiveWorkflowAction(null);
+  };
+
+  const cancelOwnWorkflow = (request: WorkflowRequestEntry) => {
+    if (!canCancelWorkflowRequest(request, currentUserName, currentUserId)) return;
+    const timestamp = formatDateTime(new Date());
+    setRequests((items) => items.map((item) => item.id === request.id ? {
+      ...item,
+      status: "cancelled",
+      updatedAt: timestamp,
+      history: [{ at: timestamp, actor: currentUserName, action: "申請を取り消し" }, ...item.history],
+    } : item));
+  };
+
+  const resubmitWorkflow = (request: WorkflowRequestEntry) => {
+    if (!canResubmitWorkflowRequest(request, currentUserName, currentUserId)) return;
+    const timestamp = formatDateTime(new Date());
+    const nextStatus: WorkflowStatus = canDirectWorkflowFinalApprove(appRole) ? "approval_wait" : "manager_wait";
+    setRequests((items) => items.map((item) => item.id === request.id ? {
+      ...item,
+      status: nextStatus,
+      updatedAt: timestamp,
+      history: [{ at: timestamp, actor: currentUserName, action: "再申請", comment: "差し戻し内容を確認して再提出" }, ...item.history],
+    } : item));
+  };
 
   return (
-    <PageFrame title="Workflow" lead="申請、添付、複数承認、差し戻しを扱うワークフローの土台です。今後実装予定です。">
+    <PageFrame title="Workflow" lead="社内申請、Manager確認、Owner/Admin最終承認、差し戻し履歴を扱います。Task承認とは別系統です。">
       <PanelCard className="p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">今後実装予定</span>
-            <h3 className="mt-4 text-xl font-black text-slate-950">TeamOS Workflow Foundation</h3>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-              サイボウズのワークフロー置き換えを見据えて、申請フォーム、添付、複数承認、条件分岐、差し戻し履歴の土台を置きます。
-            </p>
+            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">MVP実装中</span>
+            <h3 className="mt-4 text-xl font-black text-slate-950">申請ワークフロー</h3>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">{actionMessage}</p>
           </div>
-          <span className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-black text-slate-600">Phase 3</span>
+          <button className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:text-slate-300" type="button" disabled={!visibleRequests.length} onClick={() => exportWorkflowCsv(visibleRequests)}>
+            CSV出力
+          </button>
+        </div>
+        <div className="mt-5 grid gap-3 sm:grid-cols-4">
+          <WorkflowStat label="申請中" value={workflowStats.inProgress} />
+          <WorkflowStat label="確認待ち" value={workflowStats.managerWait} />
+          <WorkflowStat label="最終承認待ち" value={workflowStats.approvalWait} />
+          <WorkflowStat label="承認済み" value={workflowStats.approved} />
         </div>
       </PanelCard>
 
-      <div className="grid gap-4 xl:grid-cols-3">
-        {workflowFoundationItems.map((item) => {
-          const Icon = item.icon;
-          return (
-            <PanelCard key={item.title} className="p-5">
-              <div className="grid size-10 place-items-center rounded-lg bg-red-50 text-[#D6001C]">
-                <Icon size={19} />
+      <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+        <PanelCard className="p-5">
+          <h3 className="font-black text-slate-950">新規申請</h3>
+          <div className="mt-4 grid gap-3">
+            <label className="grid gap-1 text-sm font-bold text-slate-700">
+              申請テンプレート
+              <select className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-[#D6001C]" value={selectedTemplate?.id ?? ""} onChange={(event) => setSelectedTemplateId(event.currentTarget.value)}>
+                {activeTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}
+              </select>
+            </label>
+            {selectedTemplate ? (
+              <div className="rounded-lg bg-slate-50 p-4">
+                <p className="text-xs font-black text-slate-500">{selectedTemplate.category}</p>
+                <p className="mt-1 text-sm leading-6 text-slate-600">{selectedTemplate.description}</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {selectedTemplate.fields.map((field) => (
+                    <span key={field.id} className="rounded-md bg-white px-2 py-1 text-[11px] font-bold text-slate-600 ring-1 ring-slate-200">
+                      {field.label} / {field.type}{field.required ? " 必須" : ""}
+                    </span>
+                  ))}
+                </div>
               </div>
-              <h3 className="mt-4 font-black text-slate-950">{item.title}</h3>
-              <p className="mt-2 text-sm leading-6 text-slate-500">{item.description}</p>
-            </PanelCard>
-          );
-        })}
+            ) : null}
+            <label className="grid gap-1 text-sm font-bold text-slate-700">
+              件名
+              <input className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-[#D6001C]" value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.currentTarget.value })} />
+            </label>
+            <label className="grid gap-1 text-sm font-bold text-slate-700">
+              申請内容
+              <textarea className="min-h-32 rounded-lg border border-slate-200 px-3 py-2 outline-none focus:border-[#D6001C]" value={draft.body} onChange={(event) => setDraft({ ...draft, body: event.currentTarget.value })} />
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="grid gap-1 text-sm font-bold text-slate-700">
+                申請部門
+                <select className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-[#D6001C]" value={draft.department} onChange={(event) => setDraft({ ...draft, department: event.currentTarget.value })}>
+                  {workflowDepartmentOptions.map((department) => <option key={department} value={department}>{department}</option>)}
+                </select>
+              </label>
+              <label className="grid gap-1 text-sm font-bold text-slate-700">
+                金額
+                <input className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-[#D6001C]" inputMode="numeric" value={draft.amount} onChange={(event) => setDraft({ ...draft, amount: event.currentTarget.value.normalize("NFKC") })} />
+              </label>
+              <label className="grid gap-1 text-sm font-bold text-slate-700">
+                希望日/期日
+                <input className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-[#D6001C]" type="date" value={draft.dueDate} onChange={(event) => setDraft({ ...draft, dueDate: event.currentTarget.value })} />
+              </label>
+            </div>
+            <button className="h-11 rounded-lg bg-[#D6001C] px-4 text-sm font-black text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300" type="button" disabled={!selectedTemplate || !draft.title.trim() || !draft.body.trim()} onClick={submitWorkflow}>
+              申請を送信
+            </button>
+          </div>
+        </PanelCard>
+
+        <PanelCard className="p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="font-black text-slate-950">申請一覧</h3>
+              <p className="mt-1 text-sm text-slate-500">申請者、確認者、最終承認者だけが履歴を確認できます。</p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">{visibleRequests.length}件</span>
+          </div>
+          <div className="mt-4 grid gap-3">
+            {visibleRequests.map((request) => (
+              <WorkflowRequestCard
+                key={request.id}
+                request={request}
+                currentUserName={currentUserName}
+                currentUserId={currentUserId}
+                currentUserDepartment={currentUserDepartment}
+                appRole={appRole}
+                onAction={setActiveWorkflowAction}
+                onCancel={cancelOwnWorkflow}
+                onResubmit={resubmitWorkflow}
+              />
+            ))}
+            {visibleRequests.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
+                <h3 className="font-bold text-slate-900">表示できる申請はありません</h3>
+                <p className="mt-2 text-sm text-slate-500">自分の申請、確認担当、最終承認対象がここに表示されます。</p>
+              </div>
+            ) : null}
+          </div>
+        </PanelCard>
       </div>
 
-      <PanelCard className="p-5">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="font-black text-slate-950">承認ルートサンプル</h3>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-500">設計イメージ</span>
+      {activeRequest && activeWorkflowAction ? (
+        <div ref={workflowActionPanelRef} className="scroll-mt-24">
+          <WorkflowActionPanel request={activeRequest} mode={activeWorkflowAction.mode} onCancel={() => setActiveWorkflowAction(null)} onSubmit={completeWorkflowAction} />
         </div>
-        <div className="mt-5 grid gap-3 md:grid-cols-5">
-          {routeSteps.map((step, index) => (
-            <div key={step} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-              <span className="grid size-8 place-items-center rounded-full bg-[#D6001C] text-xs font-black text-white">{index + 1}</span>
-              <p className="mt-3 text-sm font-black text-slate-900">{step}</p>
-              <p className="mt-2 text-xs leading-5 text-slate-500">{index === 3 ? "金額や内容で省略/必須を分岐" : "今後実装予定"}</p>
+      ) : null}
+
+      {canManageWorkflow ? (
+        <PanelCard className="p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="font-black text-slate-950">テンプレート管理</h3>
+              <p className="mt-1 text-sm text-slate-500">Owner/Adminが申請種別を追加・編集・削除できます。削除は履歴として残します。</p>
+            </div>
+            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-black text-emerald-700">Owner/Admin</span>
+          </div>
+          <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_1.4fr_auto]">
+            <input className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-[#D6001C]" placeholder="テンプレート名" value={templateDraft.name} onChange={(event) => setTemplateDraft({ ...templateDraft, name: event.currentTarget.value })} />
+            <input className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-[#D6001C]" placeholder="カテゴリ" value={templateDraft.category} onChange={(event) => setTemplateDraft({ ...templateDraft, category: event.currentTarget.value })} />
+            <input className="h-11 rounded-lg border border-slate-200 px-3 outline-none focus:border-[#D6001C]" placeholder="説明" value={templateDraft.description} onChange={(event) => setTemplateDraft({ ...templateDraft, description: event.currentTarget.value })} />
+            <button className="h-11 rounded-lg bg-slate-950 px-4 text-sm font-black text-white disabled:bg-slate-300" type="button" disabled={!templateDraft.name.trim() || !templateDraft.category.trim()} onClick={saveTemplate}>
+              {templateDraft.id ? "更新" : "追加"}
+            </button>
+          </div>
+          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {activeTemplates.map((template) => (
+              <div key={template.id} className="rounded-lg border border-slate-200 bg-white p-4">
+                <p className="text-xs font-black text-slate-500">{template.category}</p>
+                <h4 className="mt-1 font-black text-slate-950">{template.name}</h4>
+                <p className="mt-2 text-sm leading-6 text-slate-500">{template.description}</p>
+                <div className="mt-4 flex gap-2">
+                  <button className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C]" type="button" onClick={() => setTemplateDraft({ id: template.id, name: template.name, category: template.category, description: template.description })}>
+                    <Pencil size={14} /> 編集
+                  </button>
+                  <button className="inline-flex h-9 items-center gap-2 rounded-lg border border-red-200 px-3 text-xs font-bold text-red-700 hover:bg-red-50" type="button" onClick={() => deleteTemplate(template)}>
+                    <Trash2 size={14} /> 削除
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </PanelCard>
+      ) : null}
+    </PageFrame>
+  );
+}
+
+function WorkflowStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-lg bg-slate-50 p-4">
+      <p className="text-xs font-black text-slate-500">{label}</p>
+      <p className="mt-1 text-2xl font-black text-slate-950">{value}</p>
+    </div>
+  );
+}
+
+function WorkflowRequestCard({
+  request,
+  currentUserName,
+  currentUserId,
+  currentUserDepartment,
+  appRole,
+  onAction,
+  onCancel,
+  onResubmit,
+}: {
+  request: WorkflowRequestEntry;
+  currentUserName: string;
+  currentUserId?: string;
+  currentUserDepartment?: string;
+  appRole: AppRole;
+  onAction: (action: WorkflowAction) => void;
+  onCancel: (request: WorkflowRequestEntry) => void;
+  onResubmit: (request: WorkflowRequestEntry) => void;
+}) {
+  const status = workflowStatusMeta[request.status];
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-black text-slate-500">{request.id} / {request.templateName}</p>
+          <h4 className="mt-1 break-words font-black text-slate-950">{request.title}</h4>
+          <p className="mt-2 text-sm text-slate-500">申請者 {request.applicantName} / 部門 {request.department ?? "未設定"}</p>
+        </div>
+        <span className={`rounded-md px-2 py-0.5 text-[11px] font-black ring-1 ${status.className}`}>{status.label}</span>
+      </div>
+      <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm leading-6 text-slate-600">{request.body}</p>
+      <div className="mt-3 grid gap-2 text-xs font-bold text-slate-500 sm:grid-cols-2">
+        <span>金額: {request.amount ? `${request.amount}円` : "未設定"}</span>
+        <span>希望日/期日: {request.dueDate ? formatCalendarDateLabel(request.dueDate) : "未設定"}</span>
+        <span>Manager確認: {request.managerName ?? "未設定"}</span>
+        <span>最終承認: {request.finalApproverName ?? "Owner/Admin"}</span>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button className="h-9 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-300" type="button" disabled={!canConfirmWorkflowRequest(request, currentUserDepartment, appRole)} onClick={() => onAction({ requestId: request.id, mode: "confirm" })}>
+          Manager確認
+        </button>
+        <button className="h-9 rounded-lg bg-[#D6001C] px-3 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300" type="button" disabled={!canFinalApproveWorkflowRequest(request, appRole)} onClick={() => onAction({ requestId: request.id, mode: "approve" })}>
+          最終承認
+        </button>
+        <button className="h-9 rounded-lg border border-slate-200 px-3 text-xs font-black text-slate-700 disabled:cursor-not-allowed disabled:text-slate-300" type="button" disabled={!canSendBackWorkflowRequest(request, currentUserDepartment, appRole)} onClick={() => onAction({ requestId: request.id, mode: "sendback" })}>
+          差し戻し
+        </button>
+        <button className="h-9 rounded-lg border border-slate-200 px-3 text-xs font-black text-slate-700 disabled:cursor-not-allowed disabled:text-slate-300" type="button" disabled={!canCancelWorkflowRequest(request, currentUserName, currentUserId)} onClick={() => onCancel(request)}>
+          取消
+        </button>
+        <button className="h-9 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-300" type="button" disabled={!canResubmitWorkflowRequest(request, currentUserName, currentUserId)} onClick={() => onResubmit(request)}>
+          再申請
+        </button>
+      </div>
+      <div className="mt-4 rounded-lg border border-slate-100">
+        <p className="border-b border-slate-100 px-3 py-2 text-xs font-black text-slate-500">履歴</p>
+        <div className="grid gap-2 p-3">
+          {request.history.slice(0, 4).map((history) => (
+            <div key={`${history.at}-${history.action}-${history.actor}`} className="text-xs leading-5 text-slate-600">
+              <strong className="text-slate-900">{history.action}</strong> / {history.actor} / {history.at}
+              {history.comment ? <p className="mt-1 text-slate-500">{history.comment}</p> : null}
             </div>
           ))}
         </div>
-      </PanelCard>
-    </PageFrame>
+      </div>
+    </div>
   );
+}
+
+function WorkflowActionPanel({ request, mode, onCancel, onSubmit }: { request: WorkflowRequestEntry; mode: NonNullable<WorkflowAction>["mode"]; onCancel: () => void; onSubmit: (comment: string) => void }) {
+  const [comment, setComment] = useState("");
+  const requiresComment = mode === "sendback" || mode === "reject";
+  return (
+    <PanelCard className="border-[#D6001C] p-5">
+      <h3 className="font-black text-slate-950">{getWorkflowActionLabel(mode)}</h3>
+      <p className="mt-2 text-sm text-slate-500">{request.id} / {request.title}</p>
+      <textarea className="mt-4 min-h-28 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" placeholder={requiresComment ? "理由を入力してください" : "コメントを入力"} value={comment} onChange={(event) => setComment(event.currentTarget.value)} />
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button className="h-10 rounded-lg bg-[#D6001C] px-4 text-sm font-black text-white disabled:bg-slate-300" type="button" disabled={requiresComment && !comment.trim()} onClick={() => onSubmit(comment.trim() || getWorkflowActionLabel(mode))}>
+          実行
+        </button>
+        <button className="h-10 rounded-lg border border-slate-200 px-4 text-sm font-bold text-slate-700" type="button" onClick={onCancel}>
+          キャンセル
+        </button>
+      </div>
+    </PanelCard>
+  );
+}
+
+function createDefaultWorkflowTemplate(id: string, name: string, category: string, description: string): WorkflowTemplate {
+  return {
+    id,
+    name,
+    category,
+    description,
+    updatedAt: "2026/06/07 00:00",
+    fields: [
+      { id: "title", label: "件名", type: "text", required: true },
+      { id: "body", label: "申請内容", type: "textarea", required: true },
+      { id: "amount", label: "金額", type: "currency" },
+      { id: "dueDate", label: "希望日/期日", type: "date" },
+      { id: "department", label: "部門", type: "department" },
+      { id: "attachmentUrl", label: "添付URL", type: "url" },
+    ],
+  };
+}
+
+function canViewWorkflowRequest(request: WorkflowRequestEntry, currentUserName: string, currentUserId: string | undefined, currentUserDepartment: string | undefined, appRole: AppRole) {
+  if (can(appRole, "workflow", "manage")) return true;
+  if (request.applicantId && currentUserId && request.applicantId === currentUserId) return true;
+  if (isSamePersonName(request.applicantName, currentUserName)) return true;
+  return canViewDepartmentWork(appRole) && isSameDepartmentLabel(request.department, currentUserDepartment);
+}
+
+function canConfirmWorkflowRequest(request: WorkflowRequestEntry, currentUserDepartment: string | undefined, appRole: AppRole) {
+  if (!["submitted", "manager_wait", "resubmit"].includes(request.status)) return false;
+  if (canDirectWorkflowFinalApprove(appRole)) return true;
+  return canViewDepartmentWork(appRole) && isSameDepartmentLabel(request.department, currentUserDepartment);
+}
+
+function canFinalApproveWorkflowRequest(request: WorkflowRequestEntry, appRole: AppRole) {
+  return canDirectWorkflowFinalApprove(appRole) && ["submitted", "manager_wait", "confirmed", "approval_wait", "resubmit"].includes(request.status);
+}
+
+function canSendBackWorkflowRequest(request: WorkflowRequestEntry, currentUserDepartment: string | undefined, appRole: AppRole) {
+  return canFinalApproveWorkflowRequest(request, appRole) || canConfirmWorkflowRequest(request, currentUserDepartment, appRole);
+}
+
+function canCancelWorkflowRequest(request: WorkflowRequestEntry, currentUserName: string, currentUserId?: string) {
+  if (["approved", "rejected", "cancelled", "completed"].includes(request.status)) return false;
+  return (request.applicantId && currentUserId && request.applicantId === currentUserId) || isSamePersonName(request.applicantName, currentUserName);
+}
+
+function canResubmitWorkflowRequest(request: WorkflowRequestEntry, currentUserName: string, currentUserId?: string) {
+  if (request.status !== "sendback") return false;
+  return (request.applicantId && currentUserId && request.applicantId === currentUserId) || isSamePersonName(request.applicantName, currentUserName);
+}
+
+function canDirectWorkflowFinalApprove(appRole: AppRole) {
+  return appRole === "owner" || appRole === "admin";
+}
+
+function getNextWorkflowStatus(mode: NonNullable<WorkflowAction>["mode"]): WorkflowStatus {
+  if (mode === "confirm") return "approval_wait";
+  if (mode === "approve") return "approved";
+  if (mode === "sendback") return "sendback";
+  if (mode === "reject") return "rejected";
+  return "completed";
+}
+
+function getWorkflowActionLabel(mode: NonNullable<WorkflowAction>["mode"]) {
+  if (mode === "confirm") return "Manager確認済み";
+  if (mode === "approve") return "最終承認";
+  if (mode === "sendback") return "差し戻し";
+  if (mode === "reject") return "却下";
+  return "完了";
+}
+
+function getWorkflowStats(requests: WorkflowRequestEntry[]) {
+  return requests.reduce(
+    (stats, request) => {
+      if (["submitted", "manager_wait", "confirmed", "approval_wait", "resubmit"].includes(request.status)) stats.inProgress += 1;
+      if (request.status === "manager_wait") stats.managerWait += 1;
+      if (request.status === "approval_wait") stats.approvalWait += 1;
+      if (request.status === "approved" || request.status === "completed") stats.approved += 1;
+      return stats;
+    },
+    { inProgress: 0, managerWait: 0, approvalWait: 0, approved: 0 },
+  );
+}
+
+function formatWorkflowIdKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+  const milliseconds = String(date.getMilliseconds()).padStart(3, "0");
+  return `${year}${month}${day}${hours}${minutes}${seconds}${milliseconds}`;
+}
+
+function loadWorkflowList<T>(key: string, fallback: T[]) {
+  if (typeof window === "undefined") return fallback;
+  const raw = window.localStorage.getItem(key);
+  if (!raw) return fallback;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed as T[] : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function saveWorkflowList<T>(key: string, value: T[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(key, JSON.stringify(value));
+}
+
+function exportWorkflowCsv(requests: WorkflowRequestEntry[]) {
+  if (typeof window === "undefined") return;
+  const rows = [
+    ["id", "template", "title", "applicant", "department", "status", "amount", "due_date", "updated_at"],
+    ...requests.map((request) => [
+      request.id,
+      request.templateName,
+      request.title,
+      request.applicantName,
+      request.department ?? "",
+      workflowStatusMeta[request.status].label,
+      request.amount ?? "",
+      request.dueDate ?? "",
+      request.updatedAt,
+    ]),
+  ];
+  const csv = rows.map((row) => row.map(escapeWorkflowCsvValue).join(",")).join("\n");
+  const blob = new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" });
+  const url = window.URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `workflow-${formatDateKeyFromDate(new Date())}.csv`;
+  anchor.click();
+  window.URL.revokeObjectURL(url);
+}
+
+function escapeWorkflowCsvValue(value: string) {
+  return `"${value.replace(/"/g, '""')}"`;
 }
 
 export function AiSuggestionsPage() {

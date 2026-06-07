@@ -26,10 +26,41 @@ http://192.168.0.128:3000/
 - `Project`: Project登録、Task化、論理削除
 - `Task`: 通常タスク、チームタスク、承認待ち、差し戻しタスク
 - `MyToDo`: MyToDo・メモ、TeamToDo。どちらも承認フロー対象外
+- `Calendar`: ログインユーザー本人に関係するTask、MyToDo、TeamToDo、承認予定を月表示
+- `Workflow`: 社内申請、Manager確認、Owner/Admin最終承認、差し戻し履歴
 - `Approvals`: Manager確認、Owner/Admin最終承認、差し戻し
 - `Organization`: 所属、役職、権限、在籍状態の確認
 - `TaurosAI`: 社内ナレッジ、業務ルール、マニュアル、FAQのAI確認
 - `Settings`: Owner/Adminのユーザー招待、権限・部門・役職・停止状態管理
+
+## Calendar
+
+Calendarは、本人に関係する業務予定だけを月表示で確認するMVPです。
+
+- Task: 担当者、担当責任者、登録者、または権限上見える所属Taskだけ表示
+- MyToDo: ログインユーザー本人のToDoだけ表示
+- TeamToDo: 指名されたToDo、登録したToDo、または所属Managerが見えるToDoだけ表示
+- Approvals: 申請者、確認者、最終承認者、所属Manager、Owner/Adminが見える承認だけ表示
+- 日付セルにTask、ToDo、承認、差し戻し、期限超過の件数を表示
+- 詳細カードからTask、MyToDo、Approvalsへ移動可能
+
+Google Calendar連携は未実装です。まずTeamOS側を予定の正として、次段階で外部同期を追加します。
+
+## Workflow
+
+Workflowは、Task承認とは別系統の社内申請MVPです。
+
+- 申請テンプレートを選んで申請を作成
+- Manager確認、Owner/Admin最終承認、差し戻し、取消、再申請を履歴付きで管理
+- Owner/Adminはテンプレートを追加、編集、削除可能
+- CSV出力対応
+- 現状の画面データはMVPとしてブラウザ保存です。本番DB運用時は下記SQLをSupabaseへ反映します。
+
+Supabase SQL:
+
+```text
+supabase/add_workflow_mvp_20260607.sql
+```
 
 ## MyToDo
 
