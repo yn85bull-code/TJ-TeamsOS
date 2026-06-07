@@ -3679,6 +3679,15 @@ type WorkflowAction = {
   mode: "confirm" | "approve" | "sendback" | "reject" | "complete";
 } | null;
 
+type WorkflowListTab = "latest" | "sent" | "received" | "draft";
+
+const workflowListTabs: Array<{ key: WorkflowListTab; label: string }> = [
+  { key: "latest", label: "最新一覧" },
+  { key: "sent", label: "送信一覧" },
+  { key: "received", label: "受信一覧" },
+  { key: "draft", label: "下書き" },
+];
+
 const WORKFLOW_REQUESTS_STORAGE_KEY = "tauros-teamos.workflow-requests.v1";
 const WORKFLOW_TEMPLATES_STORAGE_KEY = "tauros-teamos.workflow-templates.v1";
 
@@ -3722,6 +3731,8 @@ export function WorkflowPage({
   const selectedTemplate = activeTemplates.find((template) => template.id === selectedTemplateId) ?? activeTemplates[0];
   const [draft, setDraft] = useState(() => ({ title: "", body: "", amount: "", dueDate: "", department: currentUserDepartment }));
   const [templateDraft, setTemplateDraft] = useState({ id: "", name: "", category: "", description: "" });
+  const [workflowListTab, setWorkflowListTab] = useState<WorkflowListTab>("latest");
+  const [selectedWorkflowRequestId, setSelectedWorkflowRequestId] = useState<string | null>(null);
   const [activeWorkflowAction, setActiveWorkflowAction] = useState<WorkflowAction>(null);
   const [actionMessage, setActionMessage] = useState("申請を作成し、Manager確認からOwner/Admin最終承認まで履歴を残します。");
   const canManageWorkflow = can(appRole, "workflow", "manage");
@@ -3729,6 +3740,8 @@ export function WorkflowPage({
   const visibleRequests = requests
     .filter((request) => canViewWorkflowRequest(request, currentUserName, currentUserId, currentUserDepartment, appRole))
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  const workflowListRequests = filterWorkflowRequestsByTab(visibleRequests, workflowListTab, currentUserName, currentUserId, currentUserDepartment, appRole);
+  const selectedWorkflowRequest = visibleRequests.find((request) => request.id === selectedWorkflowRequestId) ?? workflowListRequests[0] ?? visibleRequests[0];
   const workflowStats = getWorkflowStats(visibleRequests);
   const activeRequest = activeWorkflowAction ? visibleRequests.find((request) => request.id === activeWorkflowAction.requestId) : undefined;
   const workflowActionPanelRef = useAutoScrollPanel(activeWorkflowAction ? `${activeWorkflowAction.requestId}-${activeWorkflowAction.mode}` : null);
@@ -3770,6 +3783,8 @@ export function WorkflowPage({
       ],
     };
     setRequests((items) => [request, ...items]);
+    setSelectedWorkflowRequestId(request.id);
+    setWorkflowListTab("latest");
     setDraft({ title: "", body: "", amount: "", dueDate: "", department: currentUserDepartment });
     setActionMessage(`${request.id} を申請しました。`);
   };
@@ -3816,6 +3831,7 @@ export function WorkflowPage({
       ],
     } : request));
     setActionMessage(`${activeRequest.id} を ${workflowStatusMeta[nextStatus].label} に更新しました。`);
+    setSelectedWorkflowRequestId(activeRequest.id);
     setActiveWorkflowAction(null);
   };
 
@@ -3828,6 +3844,7 @@ export function WorkflowPage({
       updatedAt: timestamp,
       history: [{ at: timestamp, actor: currentUserName, action: "申請を取り消し" }, ...item.history],
     } : item));
+    setSelectedWorkflowRequestId(request.id);
   };
 
   const resubmitWorkflow = (request: WorkflowRequestEntry) => {
@@ -3840,6 +3857,7 @@ export function WorkflowPage({
       updatedAt: timestamp,
       history: [{ at: timestamp, actor: currentUserName, action: "再申請", comment: "差し戻し内容を確認して再提出" }, ...item.history],
     } : item));
+    setSelectedWorkflowRequestId(request.id);
   };
 
   return (
@@ -3916,43 +3934,71 @@ export function WorkflowPage({
           </div>
         </PanelCard>
 
-        <PanelCard className="p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="font-black text-slate-950">申請一覧</h3>
-              <p className="mt-1 text-sm text-slate-500">申請者、確認者、最終承認者だけが履歴を確認できます。</p>
-            </div>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">{visibleRequests.length}件</span>
-          </div>
-          <div className="mt-4 grid gap-3">
-            {visibleRequests.map((request) => (
-              <WorkflowRequestCard
-                key={request.id}
-                request={request}
-                currentUserName={currentUserName}
-                currentUserId={currentUserId}
-                currentUserDepartment={currentUserDepartment}
-                appRole={appRole}
-                onAction={setActiveWorkflowAction}
-                onCancel={cancelOwnWorkflow}
-                onResubmit={resubmitWorkflow}
-              />
-            ))}
-            {visibleRequests.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
-                <h3 className="font-bold text-slate-900">表示できる申請はありません</h3>
-                <p className="mt-2 text-sm text-slate-500">自分の申請、確認担当、最終承認対象がここに表示されます。</p>
+        <div className="grid gap-4">
+          <PanelCard className="p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="font-black text-slate-950">申請一覧</h3>
+                <p className="mt-1 text-sm text-slate-500">クリックすると下に申請内容と操作が表示されます。</p>
               </div>
-            ) : null}
-          </div>
-        </PanelCard>
-      </div>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">{visibleRequests.length}件</span>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {workflowListTabs.map((tab) => {
+                const isActive = workflowListTab === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    className={`h-9 rounded-lg px-3 text-xs font-black transition ${isActive ? "bg-[#D6001C] text-white shadow-sm" : "border border-slate-200 bg-white text-slate-600 hover:border-[#D6001C] hover:text-[#D6001C]"}`}
+                    type="button"
+                    onClick={() => {
+                      setWorkflowListTab(tab.key);
+                      setActiveWorkflowAction(null);
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="mt-4 max-h-[440px] space-y-2 overflow-y-auto pr-1">
+              {workflowListRequests.map((request) => (
+                <WorkflowRequestListItem
+                  key={request.id}
+                  request={request}
+                  selected={selectedWorkflowRequest?.id === request.id}
+                  onSelect={() => {
+                    setSelectedWorkflowRequestId(request.id);
+                    setActiveWorkflowAction(null);
+                  }}
+                />
+              ))}
+              {workflowListRequests.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
+                  <h3 className="font-bold text-slate-900">この一覧に申請はありません</h3>
+                  <p className="mt-2 text-sm text-slate-500">最新一覧、送信一覧、受信一覧を切り替えて確認できます。</p>
+                </div>
+              ) : null}
+            </div>
+          </PanelCard>
 
-      {activeRequest && activeWorkflowAction ? (
-        <div ref={workflowActionPanelRef} className="scroll-mt-24">
-          <WorkflowActionPanel request={activeRequest} mode={activeWorkflowAction.mode} onCancel={() => setActiveWorkflowAction(null)} onSubmit={completeWorkflowAction} />
+          <div ref={workflowActionPanelRef} className="scroll-mt-24">
+            <WorkflowRequestDetailPanel
+              request={selectedWorkflowRequest}
+              activeMode={activeWorkflowAction && selectedWorkflowRequest?.id === activeWorkflowAction.requestId ? activeWorkflowAction.mode : null}
+              currentUserName={currentUserName}
+              currentUserId={currentUserId}
+              currentUserDepartment={currentUserDepartment}
+              appRole={appRole}
+              onAction={setActiveWorkflowAction}
+              onCancelRequest={cancelOwnWorkflow}
+              onResubmit={resubmitWorkflow}
+              onCloseAction={() => setActiveWorkflowAction(null)}
+              onSubmitAction={completeWorkflowAction}
+            />
+          </div>
         </div>
-      ) : null}
+      </div>
 
       {canManageWorkflow ? (
         <PanelCard className="p-5">
@@ -4003,72 +4049,170 @@ function WorkflowStat({ label, value }: { label: string; value: number }) {
   );
 }
 
-function WorkflowRequestCard({
+function WorkflowRequestListItem({
   request,
+  selected,
+  onSelect,
+}: {
+  request: WorkflowRequestEntry;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const status = workflowStatusMeta[request.status];
+  return (
+    <button
+      className={`w-full rounded-lg border p-3 text-left transition ${selected ? "border-[#D6001C] bg-red-50 shadow-sm" : "border-slate-200 bg-white hover:border-[#D6001C] hover:bg-slate-50"}`}
+      type="button"
+      onClick={onSelect}
+    >
+      <div className="grid gap-3 sm:grid-cols-[72px_1fr_auto] sm:items-center">
+        <span className="text-xs font-black text-slate-500">{formatWorkflowRequestNumber(request.id)}</span>
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-black text-slate-950">{request.title}</span>
+          <span className="mt-1 block truncate text-xs font-bold text-slate-500">{request.templateName} / {request.applicantName}</span>
+        </span>
+        <span className="flex items-center gap-2 sm:justify-end">
+          <span className={`whitespace-nowrap rounded-md px-2 py-0.5 text-[11px] font-black ring-1 ${status.className}`}>{status.label}</span>
+          <span className="whitespace-nowrap text-xs font-bold text-slate-500">{request.updatedAt}</span>
+        </span>
+      </div>
+    </button>
+  );
+}
+
+function WorkflowRequestDetailPanel({
+  request,
+  activeMode,
   currentUserName,
   currentUserId,
   currentUserDepartment,
   appRole,
   onAction,
-  onCancel,
+  onCancelRequest,
   onResubmit,
+  onCloseAction,
+  onSubmitAction,
 }: {
-  request: WorkflowRequestEntry;
+  request?: WorkflowRequestEntry;
+  activeMode: NonNullable<WorkflowAction>["mode"] | null;
   currentUserName: string;
   currentUserId?: string;
   currentUserDepartment?: string;
   appRole: AppRole;
   onAction: (action: WorkflowAction) => void;
-  onCancel: (request: WorkflowRequestEntry) => void;
+  onCancelRequest: (request: WorkflowRequestEntry) => void;
   onResubmit: (request: WorkflowRequestEntry) => void;
+  onCloseAction: () => void;
+  onSubmitAction: (comment: string) => void;
 }) {
+  if (!request) {
+    return (
+      <PanelCard className="p-6 text-center">
+        <h3 className="font-black text-slate-950">申請を選択してください</h3>
+        <p className="mt-2 text-sm text-slate-500">一覧から申請をクリックすると、申請内容と操作ボタンがここに表示されます。</p>
+      </PanelCard>
+    );
+  }
+
   const status = workflowStatusMeta[request.status];
+  const canConfirmRequest = canConfirmWorkflowRequest(request, currentUserDepartment, appRole);
+  const canApproveRequest = canFinalApproveWorkflowRequest(request, appRole);
+  const canSendBackRequest = canSendBackWorkflowRequest(request, currentUserDepartment, appRole);
+  const canCancelRequest = canCancelWorkflowRequest(request, currentUserName, currentUserId);
+  const canResubmitRequest = canResubmitWorkflowRequest(request, currentUserName, currentUserId);
+  const canCompleteRequest = request.status === "approved" && canDirectWorkflowFinalApprove(appRole);
+
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-black text-slate-500">{request.id} / {request.templateName}</p>
-          <h4 className="mt-1 break-words font-black text-slate-950">{request.title}</h4>
-          <p className="mt-2 text-sm text-slate-500">申請者 {request.applicantName} / 部門 {request.department ?? "未設定"}</p>
+    <PanelCard className="overflow-hidden">
+      <div className="border-b border-slate-200 bg-amber-50 px-5 py-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-black text-amber-700">No. {formatWorkflowRequestNumber(request.id)}</p>
+            <h3 className="mt-1 break-words text-xl font-black text-slate-950">{request.templateName} / {request.title}</h3>
+          </div>
+          <span className={`whitespace-nowrap rounded-md px-2 py-0.5 text-xs font-black ring-1 ${status.className}`}>{status.label}</span>
         </div>
-        <span className={`rounded-md px-2 py-0.5 text-[11px] font-black ring-1 ${status.className}`}>{status.label}</span>
       </div>
-      <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm leading-6 text-slate-600">{request.body}</p>
-      <div className="mt-3 grid gap-2 text-xs font-bold text-slate-500 sm:grid-cols-2">
-        <span>金額: {request.amount ? `${request.amount}円` : "未設定"}</span>
-        <span>希望日/期日: {request.dueDate ? formatCalendarDateLabel(request.dueDate) : "未設定"}</span>
-        <span>Manager確認: {request.managerName ?? "未設定"}</span>
-        <span>最終承認: {request.finalApproverName ?? "Owner/Admin"}</span>
-      </div>
-      <div className="mt-4 flex flex-wrap gap-2">
-        <button className="h-9 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-black text-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-300" type="button" disabled={!canConfirmWorkflowRequest(request, currentUserDepartment, appRole)} onClick={() => onAction({ requestId: request.id, mode: "confirm" })}>
-          Manager確認
-        </button>
-        <button className="h-9 rounded-lg bg-[#D6001C] px-3 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300" type="button" disabled={!canFinalApproveWorkflowRequest(request, appRole)} onClick={() => onAction({ requestId: request.id, mode: "approve" })}>
-          最終承認
-        </button>
-        <button className="h-9 rounded-lg border border-slate-200 px-3 text-xs font-black text-slate-700 disabled:cursor-not-allowed disabled:text-slate-300" type="button" disabled={!canSendBackWorkflowRequest(request, currentUserDepartment, appRole)} onClick={() => onAction({ requestId: request.id, mode: "sendback" })}>
-          差し戻し
-        </button>
-        <button className="h-9 rounded-lg border border-slate-200 px-3 text-xs font-black text-slate-700 disabled:cursor-not-allowed disabled:text-slate-300" type="button" disabled={!canCancelWorkflowRequest(request, currentUserName, currentUserId)} onClick={() => onCancel(request)}>
-          取消
-        </button>
-        <button className="h-9 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-black text-blue-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-300" type="button" disabled={!canResubmitWorkflowRequest(request, currentUserName, currentUserId)} onClick={() => onResubmit(request)}>
-          再申請
-        </button>
-      </div>
-      <div className="mt-4 rounded-lg border border-slate-100">
-        <p className="border-b border-slate-100 px-3 py-2 text-xs font-black text-slate-500">履歴</p>
-        <div className="grid gap-2 p-3">
-          {request.history.slice(0, 4).map((history) => (
-            <div key={`${history.at}-${history.action}-${history.actor}`} className="text-xs leading-5 text-slate-600">
-              <strong className="text-slate-900">{history.action}</strong> / {history.actor} / {history.at}
-              {history.comment ? <p className="mt-1 text-slate-500">{history.comment}</p> : null}
+
+      <div className="grid gap-5 p-5">
+        <section>
+          <h4 className="text-sm font-black text-slate-950">申請内容</h4>
+          <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
+            <WorkflowDetailRow label="申請者" value={`${request.applicantName} / ${request.department ?? "未設定"}`} />
+            <WorkflowDetailRow label="申請日" value={request.submittedAt ?? request.createdAt} />
+            <WorkflowDetailRow label="金額" value={request.amount ? `${request.amount}円` : "未設定"} />
+            <WorkflowDetailRow label="希望日/期日" value={request.dueDate ? formatCalendarDateLabel(request.dueDate) : "未設定"} />
+            <WorkflowDetailRow label="確認承認者" value={request.managerName ?? "未設定"} />
+            <WorkflowDetailRow label="最終決裁者" value={request.finalApproverName ?? "Owner/Admin"} />
+            <div className="grid border-t border-slate-200 md:grid-cols-[148px_1fr]">
+              <div className="bg-slate-50 px-3 py-3 text-sm font-bold text-slate-600">内容</div>
+              <div className="min-h-32 whitespace-pre-wrap px-3 py-3 text-sm leading-6 text-slate-700">{request.body}</div>
             </div>
-          ))}
-        </div>
+          </div>
+        </section>
+
+        <section>
+          <h4 className="text-sm font-black text-slate-950">操作</h4>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <WorkflowActionButton disabled={!canConfirmRequest} label="Manager確認" onClick={() => onAction({ requestId: request.id, mode: "confirm" })} />
+            <WorkflowActionButton disabled={!canApproveRequest} label="最終承認" primary onClick={() => onAction({ requestId: request.id, mode: "approve" })} />
+            <WorkflowActionButton disabled={!canSendBackRequest} label="差し戻し" onClick={() => onAction({ requestId: request.id, mode: "sendback" })} />
+            <WorkflowActionButton disabled={!canApproveRequest} label="却下" onClick={() => onAction({ requestId: request.id, mode: "reject" })} />
+            <WorkflowActionButton disabled={!canCompleteRequest} label="完了処理" onClick={() => onAction({ requestId: request.id, mode: "complete" })} />
+            <WorkflowActionButton disabled={!canCancelRequest} label="取消" onClick={() => onCancelRequest(request)} />
+            <WorkflowActionButton disabled={!canResubmitRequest} label="再申請" onClick={() => onResubmit(request)} />
+          </div>
+          {activeMode ? (
+            <WorkflowActionPanel request={request} mode={activeMode} onCancel={onCloseAction} onSubmit={onSubmitAction} />
+          ) : null}
+        </section>
+
+        <section>
+          <h4 className="text-sm font-black text-slate-950">進行状況</h4>
+          <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
+            <div className="hidden grid-cols-[1fr_1fr_1fr] bg-slate-50 px-3 py-2 text-xs font-black text-slate-500 md:grid">
+              <span>経路/操作</span>
+              <span>担当</span>
+              <span>日時・コメント</span>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {request.history.map((history, index) => (
+                <div key={`${request.id}-${history.at}-${history.action}-${history.actor}-${index}`} className="grid gap-2 px-3 py-3 text-sm md:grid-cols-[1fr_1fr_1fr]">
+                  <span className="font-black text-slate-950">{history.action}</span>
+                  <span className="text-slate-600">{history.actor}</span>
+                  <span className="text-slate-500">
+                    {history.at}
+                    {history.comment ? <span className="mt-1 block text-slate-600">{history.comment}</span> : null}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
       </div>
+    </PanelCard>
+  );
+}
+
+function WorkflowDetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid border-t border-slate-200 first:border-t-0 md:grid-cols-[148px_1fr]">
+      <div className="bg-slate-50 px-3 py-3 text-sm font-bold text-slate-600">{label}</div>
+      <div className="break-words px-3 py-3 text-sm text-slate-700">{value}</div>
     </div>
+  );
+}
+
+function WorkflowActionButton({ label, disabled, primary = false, onClick }: { label: string; disabled: boolean; primary?: boolean; onClick: () => void }) {
+  return (
+    <button
+      className={`${primary ? "bg-[#D6001C] text-white disabled:bg-slate-300" : "border border-slate-200 bg-white text-slate-700 disabled:bg-slate-100 disabled:text-slate-300"} h-10 min-w-[96px] whitespace-nowrap rounded-lg px-4 text-sm font-black disabled:cursor-not-allowed`}
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -4076,7 +4220,7 @@ function WorkflowActionPanel({ request, mode, onCancel, onSubmit }: { request: W
   const [comment, setComment] = useState("");
   const requiresComment = mode === "sendback" || mode === "reject";
   return (
-    <PanelCard className="border-[#D6001C] p-5">
+    <div className="mt-4 rounded-lg border border-[#D6001C] bg-red-50 p-4">
       <h3 className="font-black text-slate-950">{getWorkflowActionLabel(mode)}</h3>
       <p className="mt-2 text-sm text-slate-500">{request.id} / {request.title}</p>
       <textarea className="mt-4 min-h-28 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#D6001C]" placeholder={requiresComment ? "理由を入力してください" : "コメントを入力"} value={comment} onChange={(event) => setComment(event.currentTarget.value)} />
@@ -4088,7 +4232,7 @@ function WorkflowActionPanel({ request, mode, onCancel, onSubmit }: { request: W
           キャンセル
         </button>
       </div>
-    </PanelCard>
+    </div>
   );
 }
 
@@ -4108,6 +4252,41 @@ function createDefaultWorkflowTemplate(id: string, name: string, category: strin
       { id: "attachmentUrl", label: "添付URL", type: "url" },
     ],
   };
+}
+
+function filterWorkflowRequestsByTab(
+  requests: WorkflowRequestEntry[],
+  tab: WorkflowListTab,
+  currentUserName: string,
+  currentUserId: string | undefined,
+  currentUserDepartment: string | undefined,
+  appRole: AppRole,
+) {
+  if (tab === "sent") {
+    return requests.filter((request) => isWorkflowApplicant(request, currentUserName, currentUserId));
+  }
+  if (tab === "received") {
+    return requests.filter((request) => isWorkflowReceivedRequest(request, currentUserName, currentUserId, currentUserDepartment, appRole));
+  }
+  if (tab === "draft") {
+    return requests.filter((request) => isWorkflowApplicant(request, currentUserName, currentUserId) && ["draft", "sendback", "cancelled"].includes(request.status));
+  }
+  return requests;
+}
+
+function isWorkflowApplicant(request: WorkflowRequestEntry, currentUserName: string, currentUserId?: string) {
+  return Boolean(request.applicantId && currentUserId && request.applicantId === currentUserId) || isSamePersonName(request.applicantName, currentUserName);
+}
+
+function isWorkflowReceivedRequest(request: WorkflowRequestEntry, currentUserName: string, currentUserId: string | undefined, currentUserDepartment: string | undefined, appRole: AppRole) {
+  if (isWorkflowApplicant(request, currentUserName, currentUserId)) return false;
+  if (canConfirmWorkflowRequest(request, currentUserDepartment, appRole)) return true;
+  if (canFinalApproveWorkflowRequest(request, appRole)) return true;
+  return canViewDepartmentWork(appRole) && isSameDepartmentLabel(request.department, currentUserDepartment);
+}
+
+function formatWorkflowRequestNumber(id: string) {
+  return id.replace(/^WF-/, "");
 }
 
 function canViewWorkflowRequest(request: WorkflowRequestEntry, currentUserName: string, currentUserId: string | undefined, currentUserDepartment: string | undefined, appRole: AppRole) {
