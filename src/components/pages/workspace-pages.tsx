@@ -379,7 +379,83 @@ export function IssuesPage({ onNavigate, onAddLog, onCreateTask, onUpdateIssue, 
           </div>
         </div>
 
-        <div className="mt-5 overflow-x-auto">
+        <div className="mt-5 grid gap-3 lg:hidden">
+          {visibleIssues.map((issue) => {
+            const createdIssue = getCreatedIssue(issue);
+            const canEditThisIssue = createdIssue ? canEditCreatedIssue(createdIssue, currentUserName, appRole, currentUserId) : false;
+            const canTaskizeThisIssue = createdIssue ? canEditThisIssue : canViewAllWork(appRole);
+            const linkedTask = getLinkedTaskForIssue(issue, activeCreatedTasks);
+            const linkedRecord = linkedTask ? getTaskRecord(projectTaskRecords, linkedTask) : undefined;
+            const linkedProgress = linkedTask ? clampProgress(linkedRecord?.progress ?? linkedTask.progress) : 0;
+            const linkedTaskStatus = linkedTask ? getTaskStatus(linkedProgress) : undefined;
+            const linkedAssignee = linkedTask ? getTaskAssigneeLabel(linkedTask) : "未Task化";
+            return (
+              <article key={`mobile-${issue.id}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-mono text-xs font-bold text-slate-500">{issue.id}</p>
+                    <h4 className="mt-1 break-words text-base font-black text-slate-950">{issue.title}</h4>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">{issue.department} / 登録者 {issue.owner}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <IssuePriorityBadge priority={issue.priority} />
+                    <IssueStatusBadge status={issue.status} />
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-2 rounded-lg bg-slate-50 p-3 text-sm">
+                  <MobileInfoRow label="期限" value={issue.due} accent />
+                  <MobileInfoRow label="担当責任者" value={linkedTask?.responsiblePerson ?? "未Task化"} />
+                  <MobileInfoRow label="担当者" value={linkedAssignee} />
+                  <div className="grid gap-1">
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-600">
+                      <span>Task進捗</span>
+                      <span>{linkedTask ? `${linkedProgress}%` : "未Task化"}</span>
+                    </div>
+                    {linkedTask ? <ProgressBar value={linkedProgress} /> : <div className="h-2 rounded-full bg-slate-200" />}
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-xs font-bold text-slate-500">Task状態</span>
+                    {linkedTaskStatus ? <StatusBadge status={linkedTaskStatus} /> : <span className="inline-flex whitespace-nowrap rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-500 ring-1 ring-slate-200">未Task化</span>}
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+                  <button className="inline-flex h-10 items-center justify-center whitespace-nowrap rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C]" type="button" onClick={() => openDetail(issue.id)}>
+                    詳細
+                  </button>
+                  {createdIssue ? (
+                    <button
+                      className="inline-flex h-10 items-center justify-center whitespace-nowrap rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:text-slate-300"
+                      type="button"
+                      disabled={!canEditThisIssue}
+                      onClick={() => openEdit(createdIssue.id)}
+                    >
+                      編集
+                    </button>
+                  ) : null}
+                  {linkedTask ? (
+                    <button className="inline-flex h-10 items-center justify-center whitespace-nowrap rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C]" type="button" onClick={() => onNavigate?.("tasks")}>
+                      Task確認
+                    </button>
+                  ) : (
+                    <button className="inline-flex h-10 items-center justify-center whitespace-nowrap rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700 hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:text-slate-300" type="button" disabled={!canTaskizeThisIssue} onClick={() => openTaskize(issue.id)}>
+                      Task化
+                    </button>
+                  )}
+                  <button className="inline-flex h-10 items-center justify-center whitespace-nowrap rounded-lg bg-slate-800 px-3 text-xs font-bold text-white hover:bg-slate-950 disabled:cursor-not-allowed disabled:bg-slate-300" type="button" disabled={!canDeleteIssues} onClick={() => openDeleteConfirm(issue.id)}>
+                    削除
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+          {visibleIssues.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-sm font-semibold text-slate-500">表示中のProjectはありません。</div>
+          ) : null}
+        </div>
+
+        <div className="mt-5 hidden overflow-x-auto lg:block">
           <table className="w-full min-w-[1380px] text-left text-sm">
             <thead className="border-y border-slate-200 bg-slate-50 text-xs text-slate-500">
               <tr>
@@ -643,6 +719,15 @@ function CompactTextBlock({ label, text }: { label: string; text: string }) {
     <div className="rounded-lg border border-slate-100 bg-white px-3 py-2">
       <p className="text-xs font-bold text-slate-500">{label}</p>
       <p className="mt-1 max-h-16 overflow-y-auto text-xs leading-5 text-slate-700">{text}</p>
+    </div>
+  );
+}
+
+function MobileInfoRow({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div className="flex items-start justify-between gap-3 text-sm">
+      <span className="shrink-0 text-xs font-bold text-slate-500">{label}</span>
+      <strong className={`min-w-0 break-words text-right ${accent ? "text-[#D6001C]" : "text-slate-800"}`}>{value}</strong>
     </div>
   );
 }
@@ -4020,16 +4105,16 @@ export function SettingsPage({
                     {currentAuthSource === "supabase" ? "本ログイン" : "デモ確認中"}
                   </span>
                 </div>
-                <div className="mt-4 grid gap-3 xl:grid-cols-[1.1fr_1.3fr_1fr_1fr_1fr_140px]">
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_140px]">
                   <input
-                    className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                    className="h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                     placeholder="氏名"
                     value={inviteName}
                     disabled={!canChangeUserRoles || isInviting}
                     onChange={(event) => setInviteName(event.target.value)}
                   />
                   <input
-                    className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                    className="h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                     placeholder="メールアドレス"
                     type="email"
                     value={inviteEmail}
@@ -4037,7 +4122,7 @@ export function SettingsPage({
                     onChange={(event) => setInviteEmail(event.target.value)}
                   />
                   <select
-                    className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                    className="h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                     value={inviteDepartment}
                     disabled={!canChangeUserRoles || isInviting}
                     onChange={(event) => setInviteDepartment(event.target.value)}
@@ -4047,14 +4132,14 @@ export function SettingsPage({
                     ))}
                   </select>
                   <input
-                    className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                    className="h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                     placeholder="役職"
                     value={invitePosition}
                     disabled={!canChangeUserRoles || isInviting}
                     onChange={(event) => setInvitePosition(event.target.value)}
                   />
                   <select
-                    className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                    className="h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                     value={inviteRole}
                     disabled={!canChangeUserRoles || isInviting}
                     onChange={(event) => setInviteRole(event.target.value as AppRole)}
@@ -4064,7 +4149,7 @@ export function SettingsPage({
                     ))}
                   </select>
                   <button
-                    className="h-10 rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                    className="h-10 w-full rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
                     type="button"
                     disabled={!canChangeUserRoles || isInviting || !inviteName.trim() || !inviteEmail.trim() || !inviteDepartment.trim() || !invitePosition.trim()}
                     onClick={() => void inviteUser()}
@@ -4077,7 +4162,109 @@ export function SettingsPage({
                 ) : null}
               </div>
 
-              <div className="mt-4 overflow-x-auto">
+              <div className="mt-4 grid gap-3 xl:hidden">
+                {profiles.map((profile) => {
+                  const isOwner = profile.role === "owner";
+                  const isSaving = savingProfileId === profile.id;
+                  const canEditRole = canChangeUserRoles && !isOwner;
+                  const canEditProfileDetails = canChangeUserRoles;
+                  const canEditEmploymentStatus = canChangeUserRoles && !isOwner;
+                  const draft = getProfileDraft(profile);
+                  const profileDepartmentOptions = normalizeDepartmentList([...normalizedDepartments, profile.departmentName, draft.departmentName]);
+                  const normalizedDraftPosition = draft.position.trim() || "未設定";
+                  const profileDetailsChanged = draft.departmentName !== profile.departmentName || normalizedDraftPosition !== profile.position;
+                  const avatarDraft = getProfileAvatarDraft(profile);
+                  return (
+                    <article key={`profile-card-${profile.id}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-start gap-3">
+                        <ProfileAvatar name={profile.displayName} avatarUrl={avatarDraft || profile.avatarUrl} />
+                        <div className="min-w-0 flex-1">
+                          <p className="break-words font-black text-slate-950">{profile.displayName}</p>
+                          <p className="mt-1 break-all text-xs font-semibold text-slate-500">{profile.email || "メール未設定"}</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <PermissionBadge rank={profile.roleLabel} />
+                            <span className={`inline-flex min-w-20 justify-center rounded-md px-2 py-1 text-xs font-black ring-1 ${profile.isActive ? "bg-emerald-50 text-emerald-700 ring-emerald-200" : "bg-slate-100 text-slate-500 ring-slate-200"}`}>
+                              {profile.employmentStatus || (profile.isActive ? "在籍中" : "停止中")}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid gap-3">
+                        <label className="grid gap-1 text-xs font-bold text-slate-500">
+                          部門
+                          <select
+                            className="h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                            value={draft.departmentName}
+                            disabled={!canEditProfileDetails || isSaving}
+                            onChange={(event) => updateProfileDraft(profile.id, { departmentName: event.target.value, position: draft.position })}
+                          >
+                            {profileDepartmentOptions.map((department) => (
+                              <option key={`mobile-${profile.id}-${department}`} value={department}>{department}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="grid gap-1 text-xs font-bold text-slate-500">
+                          役職
+                          <input
+                            className="h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                            placeholder="役職"
+                            value={draft.position}
+                            disabled={!canEditProfileDetails || isSaving}
+                            onChange={(event) => updateProfileDraft(profile.id, { departmentName: draft.departmentName, position: event.target.value })}
+                          />
+                        </label>
+                        <button
+                          className="h-10 rounded-lg bg-slate-900 px-3 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300"
+                          type="button"
+                          disabled={!canEditProfileDetails || isSaving || !profileDetailsChanged || !draft.departmentName.trim()}
+                          onClick={() => void updateProfileDepartmentAndPosition(profile)}
+                        >
+                          部門・役職を保存
+                        </button>
+                        <label className="grid gap-1 text-xs font-bold text-slate-500">
+                          権限
+                          {isOwner ? (
+                            <span className="h-10 rounded-lg bg-red-50 px-3 py-2 text-sm font-black text-red-700 ring-1 ring-red-200">Owner固定</span>
+                          ) : (
+                            <select
+                              className="h-10 w-full min-w-0 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                              value={profile.role}
+                              disabled={!canEditRole || isSaving}
+                              onChange={(event) => void updateProfileRole(profile, event.target.value as AppRole)}
+                            >
+                              {OPERATIONAL_ROLE_OPTIONS.filter((option) => option.value !== "owner").map((option) => (
+                                <option key={`mobile-role-${option.value}`} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </label>
+                        <label className="grid gap-1 text-xs font-bold text-slate-500">
+                          状態
+                          {isOwner ? (
+                            <span className="h-10 rounded-lg bg-red-50 px-3 py-2 text-sm font-black text-red-700 ring-1 ring-red-200">Owner固定</span>
+                          ) : (
+                            <select
+                              className={`h-10 w-full min-w-0 rounded-lg border px-3 text-sm font-bold outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 ${profile.isActive ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-100 text-slate-500"}`}
+                              value={profile.employmentStatus || (profile.isActive ? "在籍中" : "停止中")}
+                              disabled={!canEditEmploymentStatus || isSaving}
+                              onChange={(event) => void updateProfileEmploymentStatus(profile, event.currentTarget.value)}
+                            >
+                              {employmentStatusOptions.map((status) => (
+                                <option key={`mobile-${profile.id}-${status}`} value={status}>{status}</option>
+                              ))}
+                            </select>
+                          )}
+                        </label>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+
+              <div className="mt-4 hidden overflow-x-auto xl:block">
                 <table className="w-full min-w-[1120px] text-left text-sm">
                   <thead className="border-y border-slate-200 bg-slate-50 text-xs text-slate-500">
                     <tr>
@@ -5114,9 +5301,9 @@ export function InboxPage() {
 function PageFrame({ title, lead, children }: { title: string; lead: string; children: React.ReactNode }) {
   return (
     <div className="grid gap-5">
-      <PanelCard className="p-6">
+      <PanelCard className="p-4 sm:p-6">
         <p className="text-sm font-bold tracking-wide text-[#D6001C]">TJ-TeamOS</p>
-        <h2 className="mt-2 text-3xl font-black text-slate-950">{title}</h2>
+        <h2 className="mt-2 text-2xl font-black text-slate-950 sm:text-3xl">{title}</h2>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-500">{lead}</p>
       </PanelCard>
       {children}

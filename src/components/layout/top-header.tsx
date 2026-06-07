@@ -169,10 +169,10 @@ export function TopHeader({
   };
 
   return (
-    <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 px-4 py-4 backdrop-blur lg:px-6">
+    <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 px-3 py-3 backdrop-blur sm:px-4 lg:px-6 lg:py-4">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between xl:gap-6">
         <div className="min-w-0">
-          <h2 className="text-2xl font-bold tracking-tight text-slate-950">{displayTitle}</h2>
+          <h2 className="text-xl font-bold tracking-tight text-slate-950 sm:text-2xl">{displayTitle}</h2>
           <p className="mt-1 text-sm text-slate-500">{descriptions[activeKey] ?? "TJ-TeamOSの状態を確認できます。"}</p>
         </div>
 
@@ -211,7 +211,7 @@ export function TopHeader({
             ) : null}
           </div>
 
-          <div className="relative flex shrink-0 items-center gap-2">
+          <div className="relative flex w-full flex-wrap items-center gap-2 md:w-auto md:flex-nowrap">
             <button className="relative grid size-10 place-items-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm hover:border-[#D6001C]" type="button" onClick={() => selectPanel("notifications")} aria-label="通知">
               <Bell size={18} />
               {unreadCount ? <span className="absolute -right-1 -top-1 grid size-5 place-items-center rounded-full bg-[#D6001C] text-[10px] font-bold text-white">{unreadCount}</span> : null}
@@ -219,16 +219,16 @@ export function TopHeader({
             <button className="grid size-10 place-items-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm hover:border-[#D6001C]" type="button" onClick={() => selectPanel("help")} aria-label="ヘルプ">
               <CircleHelp size={18} />
             </button>
-            <button className="flex h-11 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 shadow-sm hover:border-[#D6001C]" type="button" onClick={() => selectPanel("account")} aria-label="アカウントメニュー">
+            <button className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 shadow-sm hover:border-[#D6001C] sm:flex-none md:min-w-[220px]" type="button" onClick={() => selectPanel("account")} aria-label="アカウントメニュー">
               <AvatarCircle user={user} sizeClassName="size-8" />
-              <div className="text-left text-sm">
-                <p className="font-semibold leading-4">{user.name}</p>
-                <p className="text-[11px] text-slate-500">{user.position} / {user.role}</p>
+              <div className="hidden min-w-0 text-left text-sm sm:block">
+                <p className="truncate font-semibold leading-4">{user.name}</p>
+                <p className="truncate text-[11px] text-slate-500">{user.position} / {user.role}</p>
               </div>
               <ChevronDown size={16} className="text-slate-500" />
             </button>
             <button
-              className="inline-flex h-11 min-w-[136px] shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white shadow-lg shadow-red-200 transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+              className="inline-flex h-11 min-w-[120px] flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-[#D6001C] px-4 text-sm font-bold text-white shadow-lg shadow-red-200 transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none sm:flex-none sm:min-w-[136px]"
               type="button"
               disabled={!canCreate}
               title={canCreate ? "新規作成" : "この権限では新規作成できません"}
@@ -239,7 +239,7 @@ export function TopHeader({
             </button>
 
             {openPanel === "notifications" ? (
-              <HeaderPanel className="right-[172px]">
+              <HeaderPanel>
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="font-bold">通知</h3>
                   <button className="text-xs font-bold text-[#D6001C]" type="button" onClick={markAllNotificationsRead}>すべて既読</button>
@@ -266,7 +266,7 @@ export function TopHeader({
             ) : null}
 
             {false && openPanel === "notifications" ? (
-              <HeaderPanel className="right-[172px]">
+              <HeaderPanel>
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="font-bold">通知</h3>
                   <button className="text-xs font-bold text-[#D6001C]" type="button" onClick={() => setReadNotificationIds(headerNotifications.map((item) => item.id))}>すべて既読</button>
@@ -290,7 +290,7 @@ export function TopHeader({
             ) : null}
 
             {openPanel === "help" ? (
-              <HeaderPanel className="right-[122px]">
+              <HeaderPanel>
                 <h3 className="font-bold">ヘルプ</h3>
                 <div className="mt-3 grid gap-3 text-sm">
                   <HelpItem title="最終承認は人間が行う" body="AI提案や返信案は下書きとして保持し、承認前に自動登録・送信しません。" />
@@ -302,7 +302,7 @@ export function TopHeader({
             ) : null}
 
             {openPanel === "account" ? (
-              <HeaderPanel className="right-[62px]">
+              <HeaderPanel>
                 <div className="flex items-center gap-3">
                   <AvatarCircle user={user} sizeClassName="size-10" />
                   <div>
@@ -394,7 +394,11 @@ function AvatarCircle({ user, sizeClassName }: { user: AuthUser; sizeClassName: 
 }
 
 function HeaderPanel({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <div className={`absolute top-12 z-30 w-[330px] rounded-xl border border-slate-200 bg-white p-4 shadow-xl ${className}`}>{children}</div>;
+  return (
+    <div className={`fixed left-3 right-3 top-24 z-50 max-h-[72vh] overflow-y-auto rounded-xl border border-slate-200 bg-white p-4 shadow-xl sm:absolute sm:left-auto sm:right-0 sm:top-12 sm:w-[330px] ${className}`}>
+      {children}
+    </div>
+  );
 }
 
 function isNotificationRead(notification: AppNotificationEntry, readNotificationIds: string[]) {
