@@ -48,6 +48,8 @@ export type TeamProfileUpdatePayload = {
   employmentStatus?: string;
 };
 
+export type TeamUserAuthAction = "resend_invite" | "send_password_reset";
+
 export const OPERATIONAL_ROLE_OPTIONS: Array<{ value: AppRole; label: string; description: string }> = [
   { value: "owner", label: "Owner", description: "全権限・最終承認" },
   { value: "admin", label: "Admin", description: "設定・ユーザー管理" },
@@ -284,6 +286,39 @@ export async function inviteTeamUser(payload: TeamUserInvitePayload) {
     avatarUrl: invitedProfile.avatarUrl,
     source: "supabase" as const,
   } satisfies TeamProfileEntry;
+}
+
+export async function runTeamUserAuthActionInSupabase(profileId: string, action: TeamUserAuthAction) {
+  if (!canUseSupabaseBrowserClient() || !isSupabaseUuid(profileId)) {
+    return { source: "demo" as const, message: "デモ表示では認証メール操作は実行されません。" };
+  }
+
+  const supabase = createSupabaseBrowserClient();
+  const { data } = await supabase.auth.getSession();
+  const accessToken = data.session?.access_token;
+
+  if (!accessToken) {
+    throw new Error("本ログイン後に認証メール操作を実行できます。");
+  }
+
+  const response = await fetch("/api/admin/user-auth-action", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ profileId, action }),
+  });
+  const result = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(typeof result.error === "string" ? result.error : "認証メール操作に失敗しました。");
+  }
+
+  return {
+    source: "supabase" as const,
+    message: typeof result.message === "string" ? result.message : "認証メール操作を実行しました。",
+  };
 }
 
 function profileRowToEntry(profile: ProfileRow, departmentsById: Map<string, DepartmentRow>): TeamProfileEntry {

@@ -3,7 +3,7 @@
 import { AuthUser, demoUsers } from "@/lib/auth-demo-data";
 import { makeDemoAuthUser } from "@/lib/auth/profile";
 import { canUseSupabaseBrowserClient } from "@/lib/supabase/client";
-import { consumeSupabaseRedirectSession, signInWithPassword, updateCurrentSupabasePassword } from "@/lib/supabase/auth";
+import { consumeSupabaseRedirectSession, sendPasswordResetEmail, signInWithPassword, updateCurrentSupabasePassword } from "@/lib/supabase/auth";
 import { Building2, CheckCircle2, Eye, EyeOff, LockKeyhole, LogIn, Mail, ShieldCheck, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -16,6 +16,7 @@ export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) 
   const [message, setMessage] = useState("");
   const [loginMode, setLoginMode] = useState<"demo" | "supabase">("demo");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSendingReset, setIsSendingReset] = useState(false);
   const [isCheckingInvite, setIsCheckingInvite] = useState(false);
   const [inviteUser, setInviteUser] = useState<AuthUser | null>(null);
   const [invitePassword, setInvitePassword] = useState("");
@@ -121,6 +122,32 @@ export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) 
       setMessage(error instanceof Error ? error.message : "パスワード設定に失敗しました。");
     } finally {
       setIsSettingInvitePassword(false);
+    }
+  };
+
+  const sendPasswordReset = async () => {
+    const targetEmail = email.trim();
+    setLoginMode("supabase");
+
+    if (!targetEmail) {
+      setMessage("パスワード再設定メールを送るメールアドレスを入力してください。");
+      return;
+    }
+    if (!supabaseEnabled) {
+      setMessage("Supabase接続情報が未設定です。管理者に確認してください。");
+      return;
+    }
+
+    setIsSendingReset(true);
+    setMessage("");
+
+    try {
+      await sendPasswordResetEmail(targetEmail);
+      setMessage("パスワード再設定メールを送信しました。メール内リンクから新しいパスワードを設定してください。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "パスワード再設定メールの送信に失敗しました。");
+    } finally {
+      setIsSendingReset(false);
     }
   };
 
@@ -262,6 +289,14 @@ export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) 
               <button className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#D6001C] px-4 text-sm font-black text-white shadow-lg shadow-red-200 transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none" type="submit" disabled={!canLogin || isSubmitting}>
                 <LogIn size={17} />
                 {isSubmitting ? "ログイン中" : "ログイン"}
+              </button>
+              <button
+                className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-black text-slate-600 transition hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                type="button"
+                disabled={isSendingReset}
+                onClick={() => void sendPasswordReset()}
+              >
+                {isSendingReset ? "再設定メールを送信中" : "パスワードを忘れた方"}
               </button>
             </form>
 

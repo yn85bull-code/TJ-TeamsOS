@@ -72,6 +72,16 @@ export async function updateCurrentSupabasePassword(password: string) {
   if (error) throw error;
 }
 
+export async function sendPasswordResetEmail(email: string) {
+  const supabase = createSupabaseBrowserClient();
+  const redirectTo = getPasswordRecoveryRedirectUrl();
+  const { error } = await supabase.auth.resetPasswordForEmail(
+    email,
+    redirectTo ? { redirectTo } : undefined,
+  );
+  if (error) throw error;
+}
+
 async function loadAuthUserProfile(userId: string): Promise<AuthUser> {
   const supabase = createSupabaseBrowserClient();
   const { data: profile, error: profileError } = await supabase
@@ -149,6 +159,14 @@ function readSupabaseRedirectState() {
 function cleanAuthRedirectUrl() {
   if (typeof window === "undefined") return;
   window.history.replaceState({}, document.title, window.location.pathname);
+}
+
+function getPasswordRecoveryRedirectUrl() {
+  if (typeof window === "undefined") return undefined;
+
+  const url = new URL(window.location.origin);
+  url.searchParams.set("auth", "recovery");
+  return url.toString();
 }
 
 function getReadableRedirectError(message: string) {

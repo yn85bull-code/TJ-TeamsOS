@@ -8,7 +8,7 @@ import { loadLocalTaskRecords, saveLocalTaskRecords, saveTaskRecord } from "@/li
 import { formatMyTodoDateTime, type MyTodoEntry, type MyTodoPriority, type MyTodoStatus } from "@/lib/workspace/my-todo-store";
 import { type TeamsTodoEntry } from "@/lib/workspace/teams-todo-store";
 import { DEFAULT_DEPARTMENTS, normalizeDepartmentList } from "@/lib/workspace/department-store";
-import { OPERATIONAL_ROLE_OPTIONS, TeamProfileEntry, demoUsersToProfiles, getRoleLabel, inviteTeamUser, loadTeamProfilesFromSupabase, uploadProfileAvatarFileInSupabase, updateProfileDepartmentAndPositionInSupabase, updateProfileEmploymentStatusInSupabase, updateProfileRoleInSupabase } from "@/lib/workspace/profile-store";
+import { OPERATIONAL_ROLE_OPTIONS, TeamProfileEntry, demoUsersToProfiles, getRoleLabel, inviteTeamUser, loadTeamProfilesFromSupabase, runTeamUserAuthActionInSupabase, uploadProfileAvatarFileInSupabase, updateProfileDepartmentAndPositionInSupabase, updateProfileEmploymentStatusInSupabase, updateProfileRoleInSupabase } from "@/lib/workspace/profile-store";
 import { AppRole } from "@/types/database";
 import { BookOpen, Bot, Building2, CalendarDays, CheckCircle2, ClipboardList, Clock, Database, FileText, GitBranch, Inbox, ListChecks, LockKeyhole, Pencil, Plus, Save, Search, Send, ShieldCheck, Trash2, Upload, Users, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -3502,8 +3502,8 @@ export function SettingsPage({
       label: "ユーザー設定",
       icon: Users,
       status: "操作可能",
-      lead: "ログインユーザーの氏名、所属部門、役職、権限ランクを管理します。",
-      items: ["氏名・メールアドレス", "所属部門・役職", "Owner固定", "権限変更はOwner/Admin"],
+      lead: "ログインユーザーの氏名、所属部門、役職、権限ランク、認証メールを管理します。",
+      items: ["氏名・メールアドレス", "所属部門・役職", "招待再送・再設定", "停止/復帰はOwner/Admin"],
     },
     {
       key: "permissions",
@@ -3579,6 +3579,7 @@ export function SettingsPage({
   const [profileStatus, setProfileStatus] = useState<"loading" | "ready" | "error">("loading");
   const [profileMessage, setProfileMessage] = useState("");
   const [savingProfileId, setSavingProfileId] = useState<string | null>(null);
+  const [profileAuthActionId, setProfileAuthActionId] = useState<string | null>(null);
   const normalizedDepartments = normalizeDepartmentList(departments.length ? departments : DEFAULT_DEPARTMENTS);
   const activeSetting = settingDetails.find((setting) => setting.key === activeSettingKey) ?? settingDetails[1];
   const ActiveIcon = activeSetting.icon;
@@ -3909,6 +3910,28 @@ export function SettingsPage({
     }
   };
 
+  const runProfileAuthAction = async (profile: TeamProfileEntry, action: "resend_invite" | "send_password_reset") => {
+    if (!canChangeUserRoles) return;
+    if (!profile.email) {
+      setProfileMessage("対象ユーザーのメールアドレスが未設定です。");
+      return;
+    }
+
+    const actionLabel = action === "resend_invite" ? "招待再送" : "パスワード再設定メール";
+    setProfileAuthActionId(profile.id);
+    setProfileMessage(`${profile.displayName}さんへ${actionLabel}を実行しています。`);
+
+    try {
+      const result = await runTeamUserAuthActionInSupabase(profile.id, action);
+      setProfileMessage(result.message);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : `${actionLabel}に失敗しました。`;
+      setProfileMessage(message);
+    } finally {
+      setProfileAuthActionId(null);
+    }
+  };
+
   const updateProfileAvatar = async (profile: TeamProfileEntry) => {
     if (!canChangeUserRoles && profile.id !== currentUserId) return;
     const avatarFile = profileAvatarFiles[profile.id];
@@ -4165,7 +4188,7 @@ export function SettingsPage({
               <div className="mt-4 grid gap-3 xl:hidden">
                 {profiles.map((profile) => {
                   const isOwner = profile.role === "owner";
-                  const isSaving = savingProfileId === profile.id;
+                  const isSaving = savingProfileId === profile.id || profileAuthActionId === profile.id;
                   const canEditRole = canChangeUserRoles && !isOwner;
                   const canEditProfileDetails = canChangeUserRoles;
                   const canEditEmploymentStatus = canChangeUserRoles && !isOwner;
@@ -4258,6 +4281,32 @@ export function SettingsPage({
                             </select>
                           )}
                         </label>
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                          <button
+                            className={`h-10 rounded-lg px-3 text-xs font-black disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 ${profile.isActive ? "bg-slate-900 text-white" : "bg-emerald-600 text-white"}`}
+                            type="button"
+                            disabled={!canEditEmploymentStatus || isSaving}
+                            onClick={() => void updateProfileEmploymentStatus(profile, profile.isActive ? "停止中" : "在籍中")}
+                          >
+                            {profile.isActive ? "停止" : "復帰"}
+                          </button>
+                          <button
+                            className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                            type="button"
+                            disabled={!canChangeUserRoles || isSaving || isOwner || !profile.email}
+                            onClick={() => void runProfileAuthAction(profile, "resend_invite")}
+                          >
+                            招待再送
+                          </button>
+                          <button
+                            className="h-10 rounded-lg border border-red-100 bg-red-50 px-3 text-xs font-black text-[#D6001C] disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                            type="button"
+                            disabled={!canChangeUserRoles || isSaving || !profile.email}
+                            onClick={() => void runProfileAuthAction(profile, "send_password_reset")}
+                          >
+                            再設定メール
+                          </button>
+                        </div>
                       </div>
                     </article>
                   );
@@ -4265,7 +4314,7 @@ export function SettingsPage({
               </div>
 
               <div className="mt-4 hidden overflow-x-auto xl:block">
-                <table className="w-full min-w-[1120px] text-left text-sm">
+                <table className="w-full min-w-[1420px] text-left text-sm">
                   <thead className="border-y border-slate-200 bg-slate-50 text-xs text-slate-500">
                     <tr>
                       <th className="p-3">ユーザー</th>
@@ -4274,12 +4323,13 @@ export function SettingsPage({
                       <th className="p-3">現在の権限</th>
                       <th className="p-3">権限変更</th>
                       <th className="p-3">状態</th>
+                      <th className="p-3">認証操作</th>
                     </tr>
                   </thead>
                   <tbody>
                     {profiles.map((profile) => {
                       const isOwner = profile.role === "owner";
-                      const isSaving = savingProfileId === profile.id;
+                      const isSaving = savingProfileId === profile.id || profileAuthActionId === profile.id;
                       const canEditRole = canChangeUserRoles && !isOwner;
                       const canEditProfileDetails = canChangeUserRoles;
                       const canEditProfileAvatar = canChangeUserRoles || profile.id === currentUserId;
@@ -4396,6 +4446,34 @@ export function SettingsPage({
                                 ))}
                               </select>
                             )}
+                          </td>
+                          <td className="p-3">
+                            <div className="grid min-w-[280px] gap-2 lg:grid-cols-3">
+                              <button
+                                className={`h-10 rounded-lg px-3 text-xs font-black disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 ${profile.isActive ? "bg-slate-900 text-white" : "bg-emerald-600 text-white"}`}
+                                type="button"
+                                disabled={!canEditEmploymentStatus || isSaving}
+                                onClick={() => void updateProfileEmploymentStatus(profile, profile.isActive ? "停止中" : "在籍中")}
+                              >
+                                {profile.isActive ? "停止" : "復帰"}
+                              </button>
+                              <button
+                                className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-xs font-black text-slate-700 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                                type="button"
+                                disabled={!canChangeUserRoles || isSaving || isOwner || !profile.email}
+                                onClick={() => void runProfileAuthAction(profile, "resend_invite")}
+                              >
+                                招待再送
+                              </button>
+                              <button
+                                className="h-10 rounded-lg border border-red-100 bg-red-50 px-3 text-xs font-black text-[#D6001C] disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                                type="button"
+                                disabled={!canChangeUserRoles || isSaving || !profile.email}
+                                onClick={() => void runProfileAuthAction(profile, "send_password_reset")}
+                              >
+                                再設定
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
