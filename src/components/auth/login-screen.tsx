@@ -4,14 +4,13 @@ import { AuthUser, demoUsers } from "@/lib/auth-demo-data";
 import { makeDemoAuthUser } from "@/lib/auth/profile";
 import { canUseSupabaseBrowserClient } from "@/lib/supabase/client";
 import { consumeSupabaseRedirectSession, sendPasswordResetEmail, signInWithPassword, updateCurrentSupabasePassword } from "@/lib/supabase/auth";
-import { Building2, CheckCircle2, Eye, EyeOff, LockKeyhole, LogIn, Mail, ShieldCheck, Users } from "lucide-react";
+import { Building2, Eye, EyeOff, LockKeyhole, Mail } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) {
   const [companyCode, setCompanyCode] = useState("TAUROS");
   const [email, setEmail] = useState(demoUsers[0].email);
   const [password, setPassword] = useState("demo");
-  const [selectedUserId, setSelectedUserId] = useState(demoUsers[0].id);
   const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState("");
   const [loginMode, setLoginMode] = useState<"demo" | "supabase">("demo");
@@ -22,7 +21,6 @@ export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) 
   const [invitePassword, setInvitePassword] = useState("");
   const [invitePasswordConfirm, setInvitePasswordConfirm] = useState("");
   const [isSettingInvitePassword, setIsSettingInvitePassword] = useState(false);
-  const selectedUser = demoUsers.find((user) => user.id === selectedUserId) ?? demoUsers[0];
   const canLogin = Boolean(companyCode.trim() && email.trim() && password.trim());
   const supabaseEnabled = canUseSupabaseBrowserClient();
   const canSetInvitePassword = invitePassword.length >= 8 && invitePassword === invitePasswordConfirm;
@@ -63,15 +61,6 @@ export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) 
     };
   }, [onLogin, supabaseEnabled]);
 
-  const selectDemoUser = (user: AuthUser) => {
-    setSelectedUserId(user.id);
-    setEmail(user.email);
-    setCompanyCode("TAUROS");
-    setPassword("demo");
-    setLoginMode("demo");
-    setMessage("");
-  };
-
   const submitLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!canLogin) {
@@ -94,7 +83,7 @@ export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) 
         return;
       }
 
-      const matchedUser = demoUsers.find((user) => user.email.toLowerCase() === email.trim().toLowerCase()) ?? selectedUser;
+      const matchedUser = demoUsers.find((user) => user.email.toLowerCase() === email.trim().toLowerCase()) ?? demoUsers[0];
       onLogin(makeDemoAuthUser(matchedUser));
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "ログインに失敗しました。");
@@ -152,208 +141,242 @@ export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) 
   };
 
   return (
-    <main className="min-h-screen bg-[#F7F8FA] text-slate-950">
-      <div className="grid min-h-screen lg:grid-cols-[minmax(420px,520px)_1fr]">
-        <section className="flex items-center justify-center px-5 py-8 lg:px-10">
-          <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/70">
-            <div className="flex items-center gap-3">
-              <div className="grid size-11 place-items-center rounded-lg bg-[#D6001C] text-sm font-black text-white">TJ</div>
+    <main className="relative min-h-screen overflow-hidden bg-white text-slate-950">
+      <LoginNetworkBackground />
+      <div className="pointer-events-none absolute left-0 top-0 hidden size-44 bg-[#D6001C] lg:block" style={{ clipPath: "polygon(0 0, 100% 0, 0 100%)" }} />
+      <div className="pointer-events-none absolute bottom-0 right-0 size-56 bg-[#D6001C]" style={{ clipPath: "polygon(100% 0, 100% 100%, 0 100%)" }} />
+
+      <section className="relative z-10 flex min-h-screen items-center justify-center px-5 py-8 sm:px-8 lg:justify-start lg:px-[7vw]">
+        <div className="w-full max-w-[360px] rounded-lg border border-slate-100 bg-white/95 p-5 shadow-2xl shadow-slate-200/80 backdrop-blur sm:max-w-[430px] sm:p-7 lg:max-w-[540px] lg:p-8">
+          <AuthBrand />
+
+          {isCheckingInvite ? (
+            <p className="mt-5 rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold text-slate-500">
+              招待リンクを確認しています。
+            </p>
+          ) : null}
+
+          {inviteUser ? (
+            <form className="mt-5 grid gap-3 rounded-lg border border-red-100 bg-red-50 p-4" onSubmit={submitInvitePassword}>
               <div>
-                <p className="text-sm font-bold text-[#D6001C]">TJ-TeamOS</p>
-                <h1 className="text-2xl font-black tracking-tight">ログイン</h1>
+                <p className="text-sm font-black text-[#D6001C]">初回パスワード設定</p>
+                <p className="mt-1 text-xs font-bold leading-5 text-slate-600">
+                  {inviteUser.name} / {inviteUser.email}
+                </p>
               </div>
+              <LoginPasswordInput
+                label="新しいパスワード"
+                placeholder="8文字以上で入力"
+                value={invitePassword}
+                onChange={setInvitePassword}
+              />
+              <LoginPasswordInput
+                label="新しいパスワード（確認）"
+                placeholder="もう一度入力"
+                value={invitePasswordConfirm}
+                onChange={setInvitePasswordConfirm}
+              />
+              <button className="h-11 rounded-lg bg-[#D6001C] px-4 text-sm font-black text-white shadow-lg shadow-red-200 transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none" type="submit" disabled={!canSetInvitePassword || isSettingInvitePassword}>
+                {isSettingInvitePassword ? "設定中" : "パスワードを設定して開始"}
+              </button>
+            </form>
+          ) : null}
+
+          <form className="mt-7 grid gap-4" onSubmit={submitLogin}>
+            <h1 className="text-center text-xl font-black tracking-tight sm:text-2xl">ログイン</h1>
+
+            <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-slate-200 bg-white p-[2px]">
+              <button
+                className={`h-10 rounded-md text-sm font-black transition ${loginMode === "demo" ? "border border-red-200 bg-red-50 text-[#D6001C]" : "text-slate-500 hover:bg-slate-50"}`}
+                type="button"
+                onClick={() => {
+                  setLoginMode("demo");
+                  setPassword("demo");
+                  setMessage("");
+                }}
+              >
+                デモ
+              </button>
+              <button
+                className={`h-10 rounded-md text-sm font-black transition ${loginMode === "supabase" ? "border border-red-200 bg-red-50 text-[#D6001C]" : "text-slate-500 hover:bg-slate-50"} disabled:text-slate-400`}
+                type="button"
+                disabled={!supabaseEnabled}
+                onClick={() => {
+                  setLoginMode("supabase");
+                  setMessage("");
+                }}
+              >
+                本ログイン
+              </button>
             </div>
 
-            {isCheckingInvite ? (
-              <p className="mt-5 rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold text-slate-500">
-                招待リンクを確認しています。
+            {!supabaseEnabled ? (
+              <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold leading-5 text-slate-500">
+                Supabase接続情報が入るまではデモログインで操作確認します。
               </p>
             ) : null}
 
-            {inviteUser ? (
-              <form className="mt-5 grid gap-3 rounded-lg border border-red-100 bg-red-50 p-4" onSubmit={submitInvitePassword}>
-                <div>
-                  <p className="text-sm font-black text-[#D6001C]">初回パスワード設定</p>
-                  <p className="mt-1 text-xs font-bold leading-5 text-slate-600">
-                    {inviteUser.name} / {inviteUser.email}
-                  </p>
-                </div>
-                <label className="grid gap-2 text-sm font-bold text-slate-700">
-                  新しいパスワード
-                  <input
-                    className="h-11 w-full rounded-lg border border-slate-200 px-3 font-normal outline-none focus:border-[#D6001C] focus:ring-4 focus:ring-red-100"
-                    minLength={8}
-                    type="password"
-                    value={invitePassword}
-                    onChange={(event) => setInvitePassword(event.target.value)}
-                  />
-                </label>
-                <label className="grid gap-2 text-sm font-bold text-slate-700">
-                  新しいパスワード（確認）
-                  <input
-                    className="h-11 w-full rounded-lg border border-slate-200 px-3 font-normal outline-none focus:border-[#D6001C] focus:ring-4 focus:ring-red-100"
-                    minLength={8}
-                    type="password"
-                    value={invitePasswordConfirm}
-                    onChange={(event) => setInvitePasswordConfirm(event.target.value)}
-                  />
-                </label>
-                <button className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#D6001C] px-4 text-sm font-black text-white shadow-lg shadow-red-200 transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none" type="submit" disabled={!canSetInvitePassword || isSettingInvitePassword}>
-                  <CheckCircle2 size={16} />
-                  {isSettingInvitePassword ? "設定中" : "パスワードを設定して開始"}
+            <LoginTextInput
+              icon={<Building2 size={17} />}
+              label="会社コード"
+              placeholder="例） tjeam"
+              value={companyCode}
+              onChange={setCompanyCode}
+            />
+            <LoginTextInput
+              icon={<Mail size={17} />}
+              label="メールアドレス"
+              placeholder="you@example.com"
+              type="email"
+              value={email}
+              onChange={setEmail}
+            />
+
+            <label className="grid gap-2 text-sm font-black text-slate-700">
+              パスワード
+              <span className="relative">
+                <LockKeyhole className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
+                <input
+                  className="h-12 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-11 text-sm font-bold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#D6001C] focus:ring-4 focus:ring-red-100"
+                  placeholder="パスワードを入力"
+                  required
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+                <button className="absolute right-2 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" type="button" aria-label="パスワード表示切替" onClick={() => setShowPassword((value) => !value)}>
+                  {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
                 </button>
-              </form>
-            ) : null}
+              </span>
+            </label>
 
-            <form className="mt-7 grid gap-4" onSubmit={submitLogin}>
-              <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-100 p-1">
-                <button
-                  className={`h-9 rounded-md text-sm font-black ${loginMode === "demo" ? "bg-white text-[#D6001C] shadow-sm" : "text-slate-600"}`}
-                  type="button"
-                  onClick={() => {
-                    setLoginMode("demo");
-                    setPassword("demo");
-                    setMessage("");
-                  }}
-                >
-                  デモ
-                </button>
-                <button
-                  className={`h-9 rounded-md text-sm font-black ${loginMode === "supabase" ? "bg-white text-[#D6001C] shadow-sm" : "text-slate-600"} disabled:text-slate-400`}
-                  type="button"
-                  disabled={!supabaseEnabled}
-                  onClick={() => {
-                    setLoginMode("supabase");
-                    setMessage("");
-                  }}
-                >
-                  本ログイン
-                </button>
-              </div>
+            {message ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-bold text-[#D6001C]">{message}</p> : null}
 
-              {!supabaseEnabled ? (
-                <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs font-bold leading-5 text-slate-500">
-                  Supabase接続情報が入るまではデモログインで操作確認します。
-                </p>
-              ) : null}
+            <button className="mt-1 h-12 rounded-lg bg-[#D6001C] px-4 text-sm font-black text-white shadow-lg shadow-red-200 transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none" type="submit" disabled={!canLogin || isSubmitting}>
+              {isSubmitting ? "ログイン中" : "ログイン"}
+            </button>
 
-              <label className="grid gap-2 text-sm font-bold text-slate-700">
-                会社コード
-                <span className="relative">
-                  <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
-                  <input
-                    className="h-11 w-full rounded-lg border border-slate-200 pl-10 pr-3 font-normal outline-none focus:border-[#D6001C] focus:ring-4 focus:ring-red-100"
-                    placeholder="TAUROS"
-                    required
-                    value={companyCode}
-                    onChange={(event) => setCompanyCode(event.target.value)}
-                  />
-                </span>
-              </label>
-
-              <label className="grid gap-2 text-sm font-bold text-slate-700">
-                メールアドレス
-                <span className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
-                  <input
-                    className="h-11 w-full rounded-lg border border-slate-200 pl-10 pr-3 font-normal outline-none focus:border-[#D6001C] focus:ring-4 focus:ring-red-100"
-                    placeholder="yamada@example.com"
-                    required
-                    type="email"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                  />
-                </span>
-              </label>
-
-              <label className="grid gap-2 text-sm font-bold text-slate-700">
-                パスワード
-                <span className="relative">
-                  <LockKeyhole className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
-                  <input
-                    className="h-11 w-full rounded-lg border border-slate-200 pl-10 pr-11 font-normal outline-none focus:border-[#D6001C] focus:ring-4 focus:ring-red-100"
-                    placeholder="demo"
-                    required
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                  />
-                  <button className="absolute right-2 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-lg text-slate-500 hover:bg-slate-100" type="button" aria-label="パスワード表示切替" onClick={() => setShowPassword((value) => !value)}>
-                    {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
-                  </button>
-                </span>
-              </label>
-
-              {message ? <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-bold text-[#D6001C]">{message}</p> : null}
-
-              <button className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#D6001C] px-4 text-sm font-black text-white shadow-lg shadow-red-200 transition hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none" type="submit" disabled={!canLogin || isSubmitting}>
-                <LogIn size={17} />
-                {isSubmitting ? "ログイン中" : "ログイン"}
-              </button>
-              <button
-                className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-black text-slate-600 transition hover:border-[#D6001C] hover:text-[#D6001C] disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
-                type="button"
-                disabled={isSendingReset}
-                onClick={() => void sendPasswordReset()}
-              >
-                {isSendingReset ? "再設定メールを送信中" : "パスワードを忘れた方"}
-              </button>
-            </form>
-
-            <div className="mt-6 border-t border-slate-200 pt-5">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-black">デモアカウント</p>
-                <span className="rounded bg-slate-100 px-2 py-1 text-[11px] font-bold text-slate-500">パスワード demo</span>
-              </div>
-              <div className="mt-3 grid gap-2">
-                {demoUsers.map((user) => {
-                  const active = selectedUserId === user.id;
-                  return (
-                    <button
-                      key={user.id}
-                      className={`grid gap-1 rounded-lg border px-3 py-3 text-left transition ${active ? "border-[#D6001C] bg-red-50" : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50"}`}
-                      type="button"
-                      onClick={() => selectDemoUser(user)}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <strong className="text-sm">{user.name}</strong>
-                        <span className={`rounded px-2 py-0.5 text-[11px] font-black ${active ? "bg-[#D6001C] text-white" : "bg-slate-100 text-slate-600"}`}>{user.role}</span>
-                      </div>
-                      <span className="text-xs text-slate-500">{user.department} / {user.position} / {user.email}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="hidden bg-[#080F14] p-8 text-white lg:flex lg:flex-col lg:justify-between">
-          <div className="max-w-2xl">
-            <p className="text-sm font-bold tracking-[0.2em] text-red-300">TJ-TeamOS</p>
-            <h2 className="mt-4 max-w-3xl text-5xl font-black leading-tight tracking-tight">現場を動かす。判断を止めない。</h2>
-            <p className="mt-5 max-w-xl text-base leading-8 text-slate-300">
-              課題、タスク、承認、権限をひとつに。チームの進捗と意思決定を、迷わず前へ進めるWork OS。
-            </p>
-          </div>
-
-          <div className="grid gap-4 xl:grid-cols-3">
-            <LoginFeature icon={<Users size={20} />} title="見える化" body="課題とタスクを、チーム全体で共有。" />
-            <LoginFeature icon={<ShieldCheck size={20} />} title="権限管理" body="必要な人だけが、必要な操作を実行。" />
-            <LoginFeature icon={<CheckCircle2 size={20} />} title="承認フロー" body="確認、決裁、履歴を一本化。" />
-          </div>
-        </section>
-      </div>
+            <button
+              className="h-10 text-sm font-black text-[#D6001C] transition hover:text-red-700 disabled:cursor-not-allowed disabled:text-slate-400"
+              type="button"
+              disabled={isSendingReset}
+              onClick={() => void sendPasswordReset()}
+            >
+              {isSendingReset ? "再設定メールを送信中" : "パスワードを忘れた方"}
+            </button>
+          </form>
+        </div>
+      </section>
     </main>
   );
 }
 
-function LoginFeature({ icon, title, body }: { icon: React.ReactNode; title: string; body: string }) {
+function AuthBrand() {
   return (
-    <div className="rounded-lg border border-white/10 bg-white/5 p-4">
-      <div className="grid size-10 place-items-center rounded-lg bg-white text-[#D6001C]">{icon}</div>
-      <h3 className="mt-4 font-black">{title}</h3>
-      <p className="mt-2 text-sm leading-6 text-slate-300">{body}</p>
+    <div className="flex items-center justify-center gap-4">
+      <div className="grid size-14 place-items-center rounded-lg bg-[#D6001C] text-xl font-black text-white shadow-lg shadow-red-200">TJ</div>
+      <div>
+        <p className="text-2xl font-black tracking-tight text-slate-950">TJ-TeamOS</p>
+        <p className="mt-1 text-sm font-bold italic text-slate-500">Work OS / MWP</p>
+      </div>
     </div>
+  );
+}
+
+function LoginTextInput({
+  icon,
+  label,
+  placeholder,
+  type = "text",
+  value,
+  onChange,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  placeholder: string;
+  type?: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="grid gap-2 text-sm font-black text-slate-700">
+      {label}
+      <span className="relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">{icon}</span>
+        <input
+          className="h-12 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-sm font-bold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#D6001C] focus:ring-4 focus:ring-red-100"
+          placeholder={placeholder}
+          required
+          type={type}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      </span>
+    </label>
+  );
+}
+
+function LoginPasswordInput({ label, placeholder, value, onChange }: { label: string; placeholder: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="grid gap-2 text-sm font-black text-slate-700">
+      {label}
+      <input
+        className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold outline-none transition focus:border-[#D6001C] focus:ring-4 focus:ring-red-100"
+        minLength={8}
+        placeholder={placeholder}
+        type="password"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  );
+}
+
+function LoginNetworkBackground() {
+  return (
+    <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 1440 900" role="img" aria-label="TJ-TeamOS network background" preserveAspectRatio="xMidYMid slice">
+      <defs>
+        <pattern id="loginDotPattern" width="9" height="9" patternUnits="userSpaceOnUse">
+          <circle cx="2" cy="2" r="1.6" fill="#E60012" />
+        </pattern>
+        <linearGradient id="loginArcGradient" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stopColor="#E60012" stopOpacity="0.38" />
+          <stop offset="100%" stopColor="#E60012" stopOpacity="0.08" />
+        </linearGradient>
+      </defs>
+
+      <rect width="1440" height="900" fill="white" />
+      <g fill="none" stroke="url(#loginArcGradient)" strokeWidth="1.2">
+        <path d="M360 500 C560 110 760 40 950 220" />
+        <path d="M410 560 C610 190 760 115 1020 235" />
+        <path d="M450 640 C630 270 835 275 1140 410" />
+        <path d="M520 710 C760 420 930 385 1290 520" />
+        <path d="M40 820 C340 700 610 690 910 355" />
+        <path d="M0 845 C300 745 590 760 1060 520" />
+      </g>
+
+      <g opacity="0.9">
+        <ellipse cx="940" cy="180" rx="44" ry="62" fill="url(#loginDotPattern)" transform="rotate(-18 940 180)" />
+        <path d="M845 235 C910 270 920 355 865 430 C822 492 734 485 675 535 C640 565 585 590 520 562 C575 510 635 485 682 442 C735 392 750 315 845 235Z" fill="url(#loginDotPattern)" />
+        <path d="M555 560 C505 620 438 680 382 742 C337 704 365 642 430 604 C475 578 512 560 555 560Z" fill="url(#loginDotPattern)" />
+        <path d="M612 592 C660 582 710 590 755 620 C704 648 650 648 602 627Z" fill="url(#loginDotPattern)" />
+      </g>
+
+      <g fill="#E60012" opacity="0.55">
+        {[
+          [702, 430], [820, 372], [885, 500], [940, 235], [750, 610], [575, 560], [835, 82], [1115, 388],
+        ].map(([cx, cy]) => (
+          <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="5" fill="white" stroke="#E60012" strokeWidth="2" />
+        ))}
+      </g>
+
+      <g fill="none" stroke="#E60012" strokeOpacity="0.13" strokeWidth="1">
+        <path d="M0 790 C260 710 470 865 710 778 C910 705 1110 682 1440 800" />
+        <path d="M0 810 C260 730 470 885 710 798 C910 725 1110 702 1440 820" />
+        <path d="M0 830 C260 750 470 905 710 818 C910 745 1110 722 1440 840" />
+        <path d="M0 850 C260 770 470 925 710 838 C910 765 1110 742 1440 860" />
+        <path d="M0 870 C260 790 470 945 710 858 C910 785 1110 762 1440 880" />
+      </g>
+    </svg>
   );
 }
