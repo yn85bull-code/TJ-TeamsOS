@@ -142,12 +142,10 @@ export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) 
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-white text-slate-950">
-      <LoginNetworkBackground />
-      <div className="pointer-events-none absolute left-0 top-0 hidden size-44 bg-[#D6001C] lg:block" style={{ clipPath: "polygon(0 0, 100% 0, 0 100%)" }} />
-      <div className="pointer-events-none absolute bottom-0 right-0 size-56 bg-[#D6001C]" style={{ clipPath: "polygon(100% 0, 100% 100%, 0 100%)" }} />
+      <LoginSoftBackground />
 
-      <section className="relative z-10 flex min-h-screen items-center justify-center px-5 py-8 sm:px-8 lg:justify-start lg:px-[7vw]">
-        <div className="w-full max-w-[360px] rounded-lg border border-slate-100 bg-white/95 p-5 shadow-2xl shadow-slate-200/80 backdrop-blur sm:max-w-[430px] sm:p-7 lg:max-w-[540px] lg:p-8">
+      <section className="relative z-10 flex min-h-screen items-center justify-center px-5 py-8 sm:px-8">
+        <div className="w-full max-w-[360px] rounded-lg border border-slate-100 bg-white/95 p-5 shadow-2xl shadow-red-100/80 backdrop-blur sm:max-w-[500px] sm:p-8 lg:p-10">
           <AuthBrand />
 
           {isCheckingInvite ? (
@@ -185,7 +183,7 @@ export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) 
           <form className="mt-7 grid gap-4" onSubmit={submitLogin}>
             <h1 className="text-center text-xl font-black tracking-tight sm:text-2xl">ログイン</h1>
 
-            <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-slate-200 bg-white p-[2px]">
+            <div className="grid grid-cols-2 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-[2px]">
               <button
                 className={`h-10 rounded-md text-sm font-black transition ${loginMode === "demo" ? "border border-red-200 bg-red-50 text-[#D6001C]" : "text-slate-500 hover:bg-slate-50"}`}
                 type="button"
@@ -273,10 +271,10 @@ export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) 
 
 function AuthBrand() {
   return (
-    <div className="flex items-center justify-center gap-4">
-      <div className="grid size-14 place-items-center rounded-lg bg-[#D6001C] text-xl font-black text-white shadow-lg shadow-red-200">TJ</div>
+    <div className="flex flex-col items-center justify-center text-center">
+      <div className="grid size-16 place-items-center rounded-lg bg-[#D6001C] text-2xl font-black text-white shadow-lg shadow-red-200">TJ</div>
       <div>
-        <p className="text-2xl font-black tracking-tight text-slate-950">TJ-TeamOS</p>
+        <p className="mt-5 text-3xl font-black tracking-tight text-slate-950">TJ-TeamOS</p>
         <p className="mt-1 text-sm font-bold italic text-slate-500">Work OS / MWP</p>
       </div>
     </div>
@@ -332,50 +330,36 @@ function LoginPasswordInput({ label, placeholder, value, onChange }: { label: st
   );
 }
 
-function LoginNetworkBackground() {
+function LoginSoftBackground() {
   return (
-    <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 1440 900" role="img" aria-label="TJ-TeamOS network background" preserveAspectRatio="xMidYMid slice">
+    <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 1440 900" aria-hidden="true" preserveAspectRatio="xMidYMid slice">
       <defs>
-        <pattern id="loginDotPattern" width="9" height="9" patternUnits="userSpaceOnUse">
-          <circle cx="2" cy="2" r="1.6" fill="#E60012" />
-        </pattern>
-        <linearGradient id="loginArcGradient" x1="0" x2="1" y1="0" y2="1">
-          <stop offset="0%" stopColor="#E60012" stopOpacity="0.38" />
-          <stop offset="100%" stopColor="#E60012" stopOpacity="0.08" />
+        <radialGradient id="loginGlow" cx="50%" cy="50%" r="55%">
+          <stop offset="0%" stopColor="#E60012" stopOpacity="0.18" />
+          <stop offset="55%" stopColor="#E60012" stopOpacity="0.08" />
+          <stop offset="100%" stopColor="#E60012" stopOpacity="0" />
+        </radialGradient>
+        <linearGradient id="loginCorner" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stopColor="#E60012" stopOpacity="0.62" />
+          <stop offset="100%" stopColor="#E60012" stopOpacity="0.14" />
         </linearGradient>
       </defs>
 
       <rect width="1440" height="900" fill="white" />
-      <g fill="none" stroke="url(#loginArcGradient)" strokeWidth="1.2">
-        <path d="M360 500 C560 110 760 40 950 220" />
-        <path d="M410 560 C610 190 760 115 1020 235" />
-        <path d="M450 640 C630 270 835 275 1140 410" />
-        <path d="M520 710 C760 420 930 385 1290 520" />
-        <path d="M40 820 C340 700 610 690 910 355" />
-        <path d="M0 845 C300 745 590 760 1060 520" />
+      <circle cx="718" cy="472" r="390" fill="url(#loginGlow)" />
+      <path d="M0 575 C132 775 312 858 558 900 H0Z" fill="url(#loginCorner)" />
+      <path d="M1440 720 C1390 785 1348 845 1308 900 H1440Z" fill="#E60012" opacity="0.76" />
+      <g fill="none" stroke="#E60012" strokeOpacity="0.13" strokeWidth="1.5">
+        <circle cx="720" cy="470" r="455" />
+        <circle cx="720" cy="470" r="350" />
+        <path d="M155 820 C338 704 530 760 716 738 C936 712 1125 620 1328 662" />
+        <path d="M0 778 C235 652 430 724 690 690 C914 660 1110 542 1440 575" />
+        <path d="M110 125 C332 22 528 64 725 154 C952 258 1120 200 1295 110" />
       </g>
-
-      <g opacity="0.9">
-        <ellipse cx="940" cy="180" rx="44" ry="62" fill="url(#loginDotPattern)" transform="rotate(-18 940 180)" />
-        <path d="M845 235 C910 270 920 355 865 430 C822 492 734 485 675 535 C640 565 585 590 520 562 C575 510 635 485 682 442 C735 392 750 315 845 235Z" fill="url(#loginDotPattern)" />
-        <path d="M555 560 C505 620 438 680 382 742 C337 704 365 642 430 604 C475 578 512 560 555 560Z" fill="url(#loginDotPattern)" />
-        <path d="M612 592 C660 582 710 590 755 620 C704 648 650 648 602 627Z" fill="url(#loginDotPattern)" />
-      </g>
-
-      <g fill="#E60012" opacity="0.55">
-        {[
-          [702, 430], [820, 372], [885, 500], [940, 235], [750, 610], [575, 560], [835, 82], [1115, 388],
-        ].map(([cx, cy]) => (
-          <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="5" fill="white" stroke="#E60012" strokeWidth="2" />
-        ))}
-      </g>
-
-      <g fill="none" stroke="#E60012" strokeOpacity="0.13" strokeWidth="1">
-        <path d="M0 790 C260 710 470 865 710 778 C910 705 1110 682 1440 800" />
-        <path d="M0 810 C260 730 470 885 710 798 C910 725 1110 702 1440 820" />
-        <path d="M0 830 C260 750 470 905 710 818 C910 745 1110 722 1440 840" />
-        <path d="M0 850 C260 770 470 925 710 838 C910 765 1110 742 1440 860" />
-        <path d="M0 870 C260 790 470 945 710 858 C910 785 1110 762 1440 880" />
+      <g fill="none" stroke="#E60012" strokeOpacity="0.08" strokeWidth="1">
+        <path d="M0 830 C250 748 466 884 706 808 C920 740 1136 710 1440 807" />
+        <path d="M0 850 C250 768 466 904 706 828 C920 760 1136 730 1440 827" />
+        <path d="M0 870 C250 788 466 924 706 848 C920 780 1136 750 1440 847" />
       </g>
     </svg>
   );
