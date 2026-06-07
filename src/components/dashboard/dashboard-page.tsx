@@ -118,7 +118,7 @@ export function DashboardPage({ onNavigate, createdTasks = [], createdIssues = [
         </div>
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.75fr)]">
+      <section className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.75fr)]">
         <HomeCalendarPanel
           monthLabel={monthLabel}
           monthCells={monthCells}
@@ -139,7 +139,7 @@ export function DashboardPage({ onNavigate, createdTasks = [], createdIssues = [
         <HomeDayAgendaPanel selectedDateKey={selectedDateKey} selectedItems={selectedItems} upcomingItems={upcomingItems} onNavigate={onNavigate} />
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
+      <section className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
         <HomeTaskProgressPanel tasks={homeTasks} onNavigate={onNavigate} />
         <MyTodoDashboardPanel onNavigate={onNavigate} myTodos={myTodos} teamsTodos={teamsTodos} />
       </section>
@@ -230,7 +230,7 @@ function HomeCalendarPanel({
   onNavigate: (key: string) => void;
 }) {
   return (
-    <PanelCard className="p-5">
+    <PanelCard className="self-start p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 text-[#D6001C]">
@@ -322,8 +322,8 @@ function HomeDayAgendaPanel({
   onNavigate: (key: string) => void;
 }) {
   return (
-    <div className="grid gap-5">
-      <PanelCard className="p-5">
+    <div className="grid min-h-0 gap-5">
+      <PanelCard className="min-h-0 p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="flex items-center gap-2 text-[#D6001C]">
@@ -335,7 +335,7 @@ function HomeDayAgendaPanel({
           </div>
           <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-600">{selectedItems.length}件</span>
         </div>
-        <div className="mt-4 grid gap-3">
+        <div className="mt-4 grid max-h-[520px] gap-3 overflow-y-auto pr-1">
           {selectedItems.length ? selectedItems.map((item) => (
             <HomeCalendarItemCard key={`${item.kind}-${item.id}`} item={item} onNavigate={onNavigate} />
           )) : (
@@ -347,12 +347,12 @@ function HomeDayAgendaPanel({
         </div>
       </PanelCard>
 
-      <PanelCard className="p-5">
+      <PanelCard className="min-h-0 p-5">
         <div className="flex items-center justify-between gap-3">
           <h3 className="font-black text-slate-950">直近の予定</h3>
           <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-black text-[#D6001C]">{upcomingItems.length}件</span>
         </div>
-        <div className="mt-4 grid gap-2">
+        <div className="mt-4 grid max-h-[320px] gap-2 overflow-y-auto pr-1">
           {upcomingItems.map((item) => {
             const config = homeKindConfig[item.kind];
             return (
